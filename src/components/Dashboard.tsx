@@ -1,0 +1,775 @@
+import React, { useState, useMemo } from 'react';
+import { useAppContext } from '../store';
+import { motion } from 'motion/react';
+import { addDaysToDateStr, formatIndonesianDate, getRealTodayDate } from '../lib/utils';
+
+export function Dashboard() {
+  const { rooms, transactions, openModal, maintenances, qcInspections, auditLogs, setActiveTab, currentUser } = useAppContext();
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [facilityFilter, setFacilityFilter] = useState<'ALL' | 'KAMAR' | 'AULA'>('ALL');
+
+  const realToday = getRealTodayDate();
+
+  // Metrics for Rooms & Aula
+  const kamarRooms = rooms.filter(r => r.type === "Kamar Penginapan");
+  const totalKamar = kamarRooms.length;
+  const terisiKamar = kamarRooms.filter(r => r.status === 'TERISI').length;
+  const bookedKamar = kamarRooms.filter(r => r.status === 'BOOKED').length;
+  const maintKamar = kamarRooms.filter(r => r.status === 'MAINTENANCE').length;
+  const kosongKamar = kamarRooms.filter(r => r.status === 'KOSONG').length;
+  const occupancyPercent = totalKamar > 0 ? Math.round((terisiKamar / totalKamar) * 100) : 0;
+
+  const aulaRooms = rooms.filter(r => r.building === "Ruang Pertemuan");
+  const totalAula = aulaRooms.length;
+  const aulaTerisi = aulaRooms.filter(r => r.status === 'TERISI' || r.status === 'BOOKED').length;
+
+  // Active Guests Calculation
+  const activeTransactions = transactions.filter(tx => tx.status === 'TERISI');
+  const jemaahCount = activeTransactions.filter(tx => tx.category === 'JEMAAH').length;
+  const umumCount = activeTransactions.filter(tx => tx.category === 'UMUM').length;
+
+  // Today's Operations
+  // 1. Check-In Hari Ini (Kamar Penginapan)
+  const checkinTodayList = transactions.filter(tx => {
+    return tx.building !== 'Ruang Pertemuan' && tx.status === 'BOOKED' && tx.startDate === realToday;
+  });
+
+  // Acara Ruang Pertemuan (Aula) Terlaksana Hari Ini (otomatis terlaksana jika tgl booking == realToday)
+  const aulaEventsToday = transactions.filter(tx => {
+    return tx.building === 'Ruang Pertemuan' && (tx.status === 'TERISI' || (tx.status === 'BOOKED' && tx.startDate === realToday));
+  });
+
+  // 2. Check-Out Hari Ini
+  const checkoutTodayList = transactions.filter(tx => {
+    if (tx.status !== 'TERISI') return false;
+    const checkoutDate = addDaysToDateStr(tx.startDate, tx.duration);
+    return checkoutDate === realToday || checkoutDate < realToday;
+  });
+
+  // 3. Breakfast Orders Hari Ini
+  const activeBreakfastList = transactions.filter(tx => tx.breakfast && tx.breakfastStatus !== 'SELESAI');
+  const totalBreakfastPortions = activeBreakfastList.reduce((acc, tx) => acc + (tx.breakfastPortions || 0), 0);
+
+  // 4. Maintenance Issues
+  const urgentMaintenances = maintenances.filter(m => m.status !== 'SELESAI' && m.urgency === 'Urgent');
+  const activeMaintenances = maintenances.filter(m => m.status !== 'SELESAI');
+
+  // 5. QC Ready Status
+  const readyQcRooms = rooms.filter(r => r.qcStatus === 'LOLOS_QC').length;
+  const waitingQcRooms = rooms.filter(r => r.qcStatus === 'MENUNGGU_QC').length;
+  const inspectionNeededRooms = rooms.filter(r => !r.qcStatus || r.qcStatus === 'PERLU_INSPEKSI').length;
+
+  // 6. Active Kloters Summary
+  const activeKloters = useMemo(() => {
+    const map: Record<string, { kloter: string; guestName: string; rooms: string[]; jemaahCount: number; startDate: string; duration: number }> = {};
+    activeTransactions.forEach(tx => {
+      if (tx.category === 'JEMAAH' && tx.kloter) {
+        if (!map[tx.kloter]) {
+          map[tx.kloter] = {
+            kloter: tx.kloter,
+            guestName: tx.guestName,
+            rooms: [],
+            jemaahCount: 0,
+            startDate: tx.startDate,
+            duration: tx.duration,
+          };
+        }
+        map[tx.kloter].rooms.push(tx.roomNumber);
+        map[tx.kloter].jemaahCount += 4; // Standard 4 bed per room
+      }
+    });
+    return Object.values(map);
+  }, [activeTransactions]);
+
+  // Building Occupancy Breakdown
+  const buildings = [
+    { name: 'Gedung A (Arafah)', shortName: 'Gedung A (Arafah)', icon: 'fa-kaaba', color: 'emerald' },
+    { name: 'Gedung B (Muzdalifah)', shortName: 'Gedung B (Muzdalifah)', icon: 'fa-mosque', color: 'blue' },
+    { name: 'Gedung C (Mina)', shortName: 'Gedung C (Mina)', icon: 'fa-tents', color: 'teal' },
+    { name: 'Gedung D (Madinah)', shortName: 'Gedung D (Madinah)', icon: 'fa-archway', color: 'amber' },
+    { name: 'Ruang Pertemuan', shortName: 'Ruang Pertemuan / Aula', icon: 'fa-handshake', color: 'purple' },
+  ];
+
+  const buildingStats = useMemo(() => {
+    return buildings.map(b => {
+      const bRooms = rooms.filter(r => r.building === b.name);
+      const total = bRooms.length;
+      const occupied = bRooms.filter(r => r.status === 'TERISI').length;
+      const reserved = bRooms.filter(r => r.status === 'BOOKED').length;
+      const maintenance = bRooms.filter(r => r.status === 'MAINTENANCE').length;
+      const vacant = bRooms.filter(r => r.status === 'KOSONG').length;
+      const readyQc = bRooms.filter(r => r.qcStatus === 'LOLOS_QC').length;
+      const occPercent = total > 0 ? Math.round((occupied / total) * 100) : 0;
+      return {
+        ...b,
+        total,
+        occupied,
+        reserved,
+        maintenance,
+        vacant,
+        readyQc,
+        occPercent
+      };
+    });
+  }, [rooms]);
+
+  // Calendar Logic
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayOfMonth = new Date(year, month, 1).getDay();
+
+  const handlePrevMonth = () => {
+    setCurrentDate(new Date(year, month - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentDate(new Date(year, month + 1, 1));
+  };
+
+  const handleResetToCurrent = () => {
+    setCurrentDate(new Date());
+  };
+
+  const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+  const calendarDays = useMemo(() => {
+    const days = [];
+    for (let i = 0; i < firstDayOfMonth; i++) {
+      days.push(null);
+    }
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(new Date(year, month, i));
+    }
+    return days;
+  }, [year, month, daysInMonth, firstDayOfMonth]);
+
+  const getTransactionsForDate = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const checkDateStr = `${y}-${m}-${d}`;
+
+    return transactions.filter(tx => {
+      if (tx.status === 'DIBATALKAN' || tx.status === 'SELESAI') return false;
+      
+      if (facilityFilter === 'KAMAR' && tx.building === 'Ruang Pertemuan') return false;
+      if (facilityFilter === 'AULA' && tx.building !== 'Ruang Pertemuan') return false;
+
+      if (tx.building === 'Ruang Pertemuan') {
+        return tx.startDate === checkDateStr;
+      }
+      
+      const checkoutDateStr = addDaysToDateStr(tx.startDate, tx.duration);
+      return checkDateStr >= tx.startDate && checkDateStr < checkoutDateStr;
+    });
+  };
+
+  // Recent audit logs (latest 4)
+  const recentLogs = useMemo(() => {
+    return (auditLogs || []).slice(0, 4);
+  }, [auditLogs]);
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="max-w-7xl mx-auto space-y-5"
+    >
+      {/* 1. TOP LIVE OPERATIONAL OVERVIEW BAR */}
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-xl bg-hajj-50 text-hajj-800 border border-hajj-200 flex items-center justify-center font-bold text-base shadow-xs shrink-0">
+            <i className="fa-solid fa-kaaba"></i>
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <h2 className="text-base font-black text-slate-900 tracking-tight">
+                Pusat Kendali Operasional UPT Asrama Haji
+              </h2>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                <span>Sistem Aktif</span>
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
+              <span>{formatIndonesianDate(realToday)}</span>
+              <span>•</span>
+              <span>Petugas Bertugas: <strong className="text-slate-700">{currentUser?.fullName || 'Petugas UPT'}</strong> ({currentUser?.role || 'Staff'})</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Quick Shortcut Buttons */}
+        <div className="flex items-center flex-wrap gap-2">
+          <button 
+            onClick={() => setActiveTab('gedung')} 
+            className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs"
+          >
+            <i className="fa-solid fa-door-open"></i>
+            <span>Check-In & Kamar</span>
+          </button>
+
+          <button 
+            onClick={() => openModal('modalMaintenance', { roomId: rooms[0]?.id })} 
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs"
+          >
+            <i className="fa-solid fa-triangle-exclamation"></i>
+            <span>Lapor Kerusakan</span>
+          </button>
+
+          <button 
+            onClick={() => openModal('modalExport')} 
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs"
+          >
+            <i className="fa-solid fa-file-arrow-down"></i>
+            <span>Unduh Laporan</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 2. EXECUTIVE METRIC CARDS (6 Metrik Utama) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* Okupansi Kamar */}
+        <div className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-emerald-300 transition">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Okupansi Kamar</span>
+            <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-black text-[10px] border border-emerald-200">
+              {occupancyPercent}%
+            </span>
+          </div>
+          <div className="my-2">
+            <div className="text-2xl font-black text-slate-900">{terisiKamar}<span className="text-xs font-semibold text-slate-400">/{totalKamar}</span></div>
+            <div className="w-full bg-slate-100 rounded-full h-1.5 mt-1.5 overflow-hidden">
+              <div className="bg-emerald-600 h-1.5 rounded-full transition-all" style={{ width: `${occupancyPercent}%` }}></div>
+            </div>
+          </div>
+          <span className="text-[10px] text-slate-500 font-medium">{kosongKamar} Kamar Siap Huni</span>
+        </div>
+
+        {/* Tamu / Jemaah Menginap */}
+        <div className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-emerald-300 transition">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Tamu Menginap</span>
+            <i className="fa-solid fa-users text-emerald-600 text-xs"></i>
+          </div>
+          <div className="my-2">
+            <div className="text-2xl font-black text-emerald-700">{activeTransactions.length}</div>
+            <p className="text-[10px] text-slate-500 mt-0.5">{jemaahCount} Jemaah Haji • {umumCount} Umum</p>
+          </div>
+          <span className="text-[10px] text-emerald-700 font-semibold flex items-center space-x-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Hunian Sedang Aktif</span>
+          </span>
+        </div>
+
+        {/* Reservasi Terjadwal */}
+        <div className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-blue-300 transition">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Reservasi Terjadwal</span>
+            <i className="fa-solid fa-calendar-check text-blue-600 text-xs"></i>
+          </div>
+          <div className="my-2">
+            <div className="text-2xl font-black text-blue-700">{bookedKamar}</div>
+            <p className="text-[10px] text-blue-600 mt-0.5">{checkinTodayList.length} Dijadwalkan Hari Ini</p>
+          </div>
+          <span className="text-[10px] text-slate-500">Booking Kamar Mendatang</span>
+        </div>
+
+        {/* Ruang Pertemuan (Aula) */}
+        <div className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-purple-300 transition">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider">Ruang Pertemuan</span>
+            <i className="fa-solid fa-handshake text-purple-600 text-xs"></i>
+          </div>
+          <div className="my-2">
+            <div className="text-2xl font-black text-purple-700">{totalAula}</div>
+            <p className="text-[10px] text-purple-600 mt-0.5">{aulaTerisi} Sesi Sewa Digunakan</p>
+          </div>
+          <span className="text-[10px] text-slate-500">SG-1, SG-2 & Aula Utama</span>
+        </div>
+
+        {/* Maintenance / Perbaikan */}
+        <div className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-amber-300 transition">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider">Maintenance</span>
+            <i className="fa-solid fa-screwdriver-wrench text-amber-600 text-xs"></i>
+          </div>
+          <div className="my-2">
+            <div className="text-2xl font-black text-amber-700">{maintKamar}</div>
+            <p className="text-[10px] text-amber-600 mt-0.5">{urgentMaintenances.length} Tiket Urgen</p>
+          </div>
+          <span className="text-[10px] text-slate-500">{activeMaintenances.length} Dalam Pengerjaan</span>
+        </div>
+
+        {/* Standar Mutu QC */}
+        <div className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-teal-300 transition">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-teal-700 uppercase tracking-wider">Standar Mutu QC</span>
+            <i className="fa-solid fa-clipboard-check text-teal-600 text-xs"></i>
+          </div>
+          <div className="my-2">
+            <div className="text-2xl font-black text-teal-700">{readyQcRooms}</div>
+            <p className="text-[10px] text-teal-600 mt-0.5">Kamar Lolos Standar QC</p>
+          </div>
+          <span className="text-[10px] text-purple-700 font-semibold">{waitingQcRooms} Butuh Cek QC</span>
+        </div>
+      </div>
+
+      {/* 3. AGENDA OPERASIONAL HARI INI & PRIORITAS PETUGAS */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Kolom Kiri: Agenda Hari Ini (2 Kolom) */}
+        <div className="lg:col-span-2 bg-white rounded-xl shadow-xs border border-slate-200 p-4 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center space-x-2">
+              <div className="w-7 h-7 rounded-lg bg-hajj-100 text-hajj-800 flex items-center justify-center font-bold text-xs">
+                <i className="fa-solid fa-clock-rotate-left"></i>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Agenda & Prioritas Operasional Hari Ini</h3>
+                <p className="text-[11px] text-slate-500">Monitoring jadwal check-in, check-out, dapur, dan penanganan teknis</p>
+              </div>
+            </div>
+            <span className="text-[11px] font-bold text-hajj-800 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+              {formatIndonesianDate(realToday)}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+            {/* Check-In Hari Ini Card */}
+            <div 
+              onClick={() => setActiveTab('gedung')}
+              className="p-3 rounded-xl border border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 transition cursor-pointer space-y-1"
+            >
+              <div className="flex items-center justify-between text-emerald-800">
+                <span className="text-[10px] font-bold uppercase">Check-In Kamar</span>
+                <i className="fa-solid fa-door-open text-xs"></i>
+              </div>
+              <div className="text-2xl font-black text-emerald-800">{checkinTodayList.length}</div>
+              <p className="text-[10px] text-emerald-700 font-medium line-clamp-1">
+                {checkinTodayList.length > 0 ? `${checkinTodayList[0].guestName} (${checkinTodayList[0].roomNumber})` : 'Semua telah check-in'}
+              </p>
+            </div>
+
+            {/* Check-Out Hari Ini Card */}
+            <div 
+              onClick={() => setActiveTab('gedung')}
+              className="p-3 rounded-xl border border-blue-200 bg-blue-50/40 hover:bg-blue-50 transition cursor-pointer space-y-1"
+            >
+              <div className="flex items-center justify-between text-blue-800">
+                <span className="text-[10px] font-bold uppercase">Check-Out</span>
+                <i className="fa-solid fa-right-from-bracket text-xs"></i>
+              </div>
+              <div className="text-2xl font-black text-blue-800">{checkoutTodayList.length}</div>
+              <p className="text-[10px] text-blue-700 font-medium line-clamp-1">
+                {checkoutTodayList.length > 0 ? `${checkoutTodayList[0].guestName} (${checkoutTodayList[0].roomNumber})` : 'Tidak ada kepulangan'}
+              </p>
+            </div>
+
+            {/* Acara Aula Hari Ini */}
+            <div 
+              onClick={() => setActiveTab('gedung')}
+              className="p-3 rounded-xl border border-purple-200 bg-purple-50/40 hover:bg-purple-50 transition cursor-pointer space-y-1"
+            >
+              <div className="flex items-center justify-between text-purple-800">
+                <span className="text-[10px] font-bold uppercase">Acara Aula</span>
+                <i className="fa-solid fa-handshake text-xs"></i>
+              </div>
+              <div className="text-2xl font-black text-purple-800">{aulaEventsToday.length}</div>
+              <p className="text-[10px] text-purple-700 font-medium line-clamp-1">
+                {aulaEventsToday.length > 0 ? `${aulaEventsToday[0].guestName}` : 'Tidak ada acara'}
+              </p>
+            </div>
+
+            {/* Sarapan Dapur */}
+            <div 
+              onClick={() => setActiveTab('pesananSarapan')}
+              className="p-3 rounded-xl border border-amber-200 bg-amber-50/40 hover:bg-amber-50 transition cursor-pointer space-y-1"
+            >
+              <div className="flex items-center justify-between text-amber-800">
+                <span className="text-[10px] font-bold uppercase">Sarapan</span>
+                <i className="fa-solid fa-utensils text-xs"></i>
+              </div>
+              <div className="text-2xl font-black text-amber-800">{totalBreakfastPortions} <span className="text-xs font-semibold">Porsi</span></div>
+              <p className="text-[10px] text-amber-700 font-medium line-clamp-1">
+                {activeBreakfastList.length} Kamar Menunggu
+              </p>
+            </div>
+
+            {/* Maintenance & Kerusakan */}
+            <div 
+              onClick={() => setActiveTab('laporanMaintenance')}
+              className="p-3 rounded-xl border border-red-200 bg-red-50/40 hover:bg-red-50 transition cursor-pointer space-y-1"
+            >
+              <div className="flex items-center justify-between text-red-800">
+                <span className="text-[10px] font-bold uppercase">Kerusakan</span>
+                <i className="fa-solid fa-triangle-exclamation text-xs"></i>
+              </div>
+              <div className="text-2xl font-black text-red-800">{activeMaintenances.length}</div>
+              <p className="text-[10px] text-red-700 font-medium line-clamp-1">
+                {urgentMaintenances.length > 0 ? `${urgentMaintenances.length} Urgen` : 'Terkendali'}
+              </p>
+            </div>
+          </div>
+
+          {/* Detailed Actionable Lists: Check-In, Check-Out, & Acara Aula Hari Ini */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
+            {/* List 1: Reservasi Masuk Hari Ini */}
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <i className="fa-solid fa-calendar-check text-emerald-600 text-xs"></i>
+                  <span>Jadwal Masuk (Check-In)</span>
+                </span>
+                <button onClick={() => setActiveTab('gedung')} className="text-[11px] text-emerald-700 font-bold hover:underline">
+                  Lihat Semua →
+                </button>
+              </div>
+
+              {checkinTodayList.length === 0 ? (
+                <p className="text-xs text-slate-400 py-3 text-center">Tidak ada jadwal check-in baru hari ini.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {checkinTodayList.slice(0, 3).map(tx => (
+                    <div key={tx.id} className="p-2 bg-white rounded-lg border border-slate-200 flex items-center justify-between text-xs hover:border-emerald-300 transition">
+                      <div className="min-w-0 pr-1">
+                        <div className="font-bold text-slate-900 leading-tight truncate">{tx.guestName}</div>
+                        <div className="text-[10px] text-slate-500 truncate">{tx.roomNumber} • {tx.building} • {tx.duration} Malam</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openModal('modalRoomDetail', { roomId: tx.roomId })}
+                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold transition shrink-0"
+                      >
+                        Check-In
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* List 2: Jadwal Keluar (Check-Out) */}
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <i className="fa-solid fa-door-closed text-blue-600 text-xs"></i>
+                  <span>Jadwal Keluar (Check-Out)</span>
+                </span>
+                <button onClick={() => setActiveTab('gedung')} className="text-[11px] text-blue-700 font-bold hover:underline">
+                  Lihat Semua →
+                </button>
+              </div>
+
+              {checkoutTodayList.length === 0 ? (
+                <p className="text-xs text-slate-400 py-3 text-center">Tidak ada jadwal check-out untuk hari ini.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {checkoutTodayList.slice(0, 3).map(tx => (
+                    <div key={tx.id} className="p-2 bg-white rounded-lg border border-slate-200 flex items-center justify-between text-xs hover:border-blue-300 transition">
+                      <div className="min-w-0 pr-1">
+                        <div className="font-bold text-slate-900 leading-tight truncate">{tx.guestName}</div>
+                        <div className="text-[10px] text-slate-500 truncate">{tx.roomNumber} • {tx.building}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openModal('modalCheckoutSelection', { roomId: tx.roomId, type: 'CHECKOUT' })}
+                        className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold transition shrink-0"
+                      >
+                        Check-Out
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* List 3: Acara Ruang Pertemuan (Aula) Hari Ini */}
+            <div className="p-3 bg-purple-50/40 rounded-xl border border-purple-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-purple-900 flex items-center gap-1.5">
+                  <i className="fa-solid fa-handshake text-purple-600 text-xs"></i>
+                  <span>Acara Ruang Pertemuan Hari Ini</span>
+                </span>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-200 text-purple-800">
+                  Otomatis Terlaksana
+                </span>
+              </div>
+
+              {aulaEventsToday.length === 0 ? (
+                <p className="text-xs text-slate-400 py-3 text-center">Tidak ada agenda acara aula hari ini.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {aulaEventsToday.slice(0, 3).map(tx => (
+                    <div key={tx.id} className="p-2 bg-white rounded-lg border border-purple-200 flex items-center justify-between text-xs hover:border-purple-400 transition">
+                      <div className="min-w-0 pr-1">
+                        <div className="font-bold text-slate-900 leading-tight truncate">{tx.guestName}</div>
+                        <div className="text-[10px] text-purple-700 truncate">{tx.roomNumber} • {tx.duration} Jam • Terlaksana</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openModal('modalRoomDetail', { roomId: tx.roomId })}
+                        className="px-2.5 py-1 bg-purple-700 hover:bg-purple-800 text-white rounded text-[10px] font-bold transition shrink-0"
+                      >
+                        Rincian
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Kolom Kanan: Keterisian Per Gedung & Aula */}
+        <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-4 space-y-3 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+              <div className="flex items-center space-x-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-xs">
+                  <i className="fa-solid fa-building"></i>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Keterisian Per Gedung</h3>
+                  <p className="text-[11px] text-slate-500">Status 4 Gedung & Aula</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2.5 mt-3">
+              {buildingStats.map(b => (
+                <div key={b.name} className="p-2 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-800 flex items-center space-x-1.5 truncate">
+                      <i className={`fa-solid ${b.icon} text-slate-400 text-xs`}></i>
+                      <span className="truncate">{b.shortName}</span>
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-700 shrink-0">
+                      {b.occupied}/{b.total} ({b.occPercent}%)
+                    </span>
+                  </div>
+
+                  <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden flex">
+                    <div className="bg-emerald-600 h-1.5" style={{ width: `${b.occPercent}%` }} title={`Terisi: ${b.occupied}`}></div>
+                    <div className="bg-amber-500 h-1.5" style={{ width: `${b.total > 0 ? (b.maintenance / b.total) * 100 : 0}%` }} title={`Maintenance: ${b.maintenance}`}></div>
+                  </div>
+
+                  <div className="flex justify-between text-[10px] text-slate-500 pt-0.5">
+                    <span>Tersedia: <strong>{b.vacant}</strong></span>
+                    {b.maintenance > 0 && <span className="text-amber-700 font-semibold">Maint: {b.maintenance}</span>}
+                    <button 
+                      onClick={() => setActiveTab('gedung')} 
+                      className="text-hajj-700 font-bold hover:underline"
+                    >
+                      Buka Gedung →
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button
+            onClick={() => setActiveTab('gedung')}
+            className="w-full py-2 bg-slate-900 hover:bg-hajj-800 text-white rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow-xs mt-2"
+          >
+            <i className="fa-solid fa-cubes"></i>
+            <span>Buka Denah Gedung & Kamar</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 4. KLOTER TRANSIT & JADWAL JEMAAH HAJI */}
+      {activeKloters.length > 0 && (
+        <div className="bg-white p-4 rounded-xl shadow-xs border border-slate-200 space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+            <div className="flex items-center space-x-2">
+              <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-xs">
+                <i className="fa-solid fa-plane-arrival"></i>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Rombongan Jemaah Haji Sedang Menginap</h3>
+                <p className="text-[11px] text-slate-500">Monitoring kelompok terbang (Kloter) aktif di Asrama Haji</p>
+              </div>
+            </div>
+            <button
+              onClick={() => openModal('modalKloter')}
+              className="text-xs text-emerald-700 font-bold hover:underline flex items-center space-x-1"
+            >
+              <span>Semua Kloter Haji</span>
+              <i className="fa-solid fa-arrow-right text-[10px]"></i>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {activeKloters.map(k => (
+              <div key={k.kloter} className="p-3 bg-emerald-50/40 rounded-xl border border-emerald-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-700 text-white">
+                    {k.kloter}
+                  </span>
+                  <span className="text-[10px] text-emerald-800 font-bold">
+                    {k.rooms.length} Kamar Digunakan
+                  </span>
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-900 text-xs">{k.guestName}</h4>
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    Est. {k.jemaahCount} Jemaah • Masuk: {k.startDate} (Durasi {k.duration} Hari)
+                  </p>
+                </div>
+                <div className="text-[10px] text-slate-600 bg-white p-1.5 rounded border border-emerald-100 font-mono truncate">
+                  Kamar: {k.rooms.join(', ')}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 5. KALENDER RESERVASI & HUNIAN BULANAN */}
+      <div className="bg-white p-4 rounded-xl shadow-xs border border-slate-200 space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 flex items-center">
+              <i className="fa-solid fa-calendar-days text-hajj-700 mr-2"></i>
+              Kalender Reservasi & Hunian Bulanan
+            </h3>
+            <p className="text-xs text-slate-500">Sinkronisasi data riil reservasi Kamar Penginapan & Ruang Pertemuan.</p>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Filter Fasilitas */}
+            <div className="inline-flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setFacilityFilter('ALL')}
+                className={`px-2.5 py-1 rounded-md transition ${facilityFilter === 'ALL' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+              >
+                Semua
+              </button>
+              <button
+                type="button"
+                onClick={() => setFacilityFilter('KAMAR')}
+                className={`px-2.5 py-1 rounded-md transition flex items-center space-x-1 ${facilityFilter === 'KAMAR' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+              >
+                <span>Gedung (Kamar)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFacilityFilter('AULA')}
+                className={`px-2.5 py-1 rounded-md transition flex items-center space-x-1 ${facilityFilter === 'AULA' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+              >
+                <span>Ruang Pertemuan</span>
+              </button>
+            </div>
+
+            <div className="flex items-center space-x-1">
+              <button onClick={handlePrevMonth} className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 transition" title="Bulan sebelumnya">
+                <i className="fa-solid fa-chevron-left"></i>
+              </button>
+              <span className="text-xs font-bold text-slate-800 min-w-[125px] text-center">
+                {monthNames[month]} {year}
+              </span>
+              <button onClick={handleNextMonth} className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 transition" title="Bulan berikutnya">
+                <i className="fa-solid fa-chevron-right"></i>
+              </button>
+              <button onClick={handleResetToCurrent} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 transition">
+                Hari Ini
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4 text-xs">
+          <div className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <span className="text-slate-600 text-[11px] font-medium">Check-In Kamar (Terisi)</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+            <span className="text-slate-600 text-[11px] font-medium">Booking Kamar (Reservasi)</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
+            <span className="text-slate-600 text-[11px] font-medium">Booking Aula (Ruang Pertemuan)</span>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <div className="min-w-[700px]">
+            <div className="grid grid-cols-7 gap-1 text-center font-bold text-xs text-slate-500 bg-slate-100 py-1.5 rounded-t-lg">
+              <div>Minggu</div><div>Senin</div><div>Selasa</div><div>Rabu</div><div>Kamis</div><div>Jumat</div><div>Sabtu</div>
+            </div>
+            <div className="grid grid-cols-7 gap-1 border border-slate-200 rounded-b-lg p-1 bg-slate-50">
+              {calendarDays.map((day, idx) => {
+                if (!day) return <div key={`empty-${idx}`} className="h-20 bg-slate-100/50 rounded-md border border-slate-100/50"></div>;
+                
+                const dateStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+                const dayTxs = getTransactionsForDate(day);
+                const actualToday = new Date();
+                const isToday = day.getDate() === actualToday.getDate() && day.getMonth() === actualToday.getMonth() && day.getFullYear() === actualToday.getFullYear();
+
+                const handleDayClick = () => {
+                  const allDayTxs = transactions.filter(tx => {
+                    if (tx.status === 'DIBATALKAN' || tx.status === 'SELESAI') return false;
+                    if (tx.building === 'Ruang Pertemuan') return tx.startDate === dateStr;
+                    const checkoutDateStr = addDaysToDateStr(tx.startDate, tx.duration);
+                    return dateStr >= tx.startDate && dateStr < checkoutDateStr;
+                  });
+                  openModal('modalCalendarDetail', { dateStr, dayTxs: allDayTxs });
+                };
+
+                return (
+                  <div key={`day-${day.getDate()}`} onClick={handleDayClick} className="h-20 bg-white p-1 rounded-md border border-slate-200 hover:border-hajj-600 transition cursor-pointer flex flex-col justify-between group shadow-xs overflow-hidden">
+                    <div className="flex items-center justify-between">
+                      <span className={`font-bold text-[11px] ${isToday ? 'w-4 h-4 rounded-full bg-hajj-700 text-white flex items-center justify-center text-[10px]' : 'text-slate-700'}`}>
+                        {day.getDate()}
+                      </span>
+                      {dayTxs.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
+                    </div>
+                    <div className="space-y-0.5 overflow-hidden flex-grow mt-1">
+                      {dayTxs.slice(0, 2).map((tx, tIdx) => {
+                        const bg = tx.building === "Ruang Pertemuan" ? "bg-purple-600" : (tx.status === "TERISI" ? "bg-emerald-600" : "bg-blue-600");
+                        return (
+                          <div key={tIdx} className={`${bg} text-white text-[9px] px-1 py-0.2 rounded truncate font-medium shadow-2xs`} title={`${tx.roomNumber} - ${tx.guestName}`}>
+                            {tx.roomNumber} ({tx.guestName})
+                          </div>
+                        );
+                      })}
+                      {dayTxs.length > 2 && (
+                        <div className="text-[8px] text-slate-500 font-bold px-1">+{dayTxs.length - 2} lagi</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 6. LOG AKTIVITAS SISTEM TERKINI */}
+      {recentLogs.length > 0 && (
+        <div className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center space-x-2 text-xs">
+            <span className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">
+              <i className="fa-solid fa-history"></i>
+            </span>
+            <span className="font-bold text-slate-800">Aktivitas Terkini:</span>
+            <span className="text-slate-600 truncate max-w-lg">
+              <strong>{recentLogs[0].userName || recentLogs[0].user}</strong>: {recentLogs[0].details}
+            </span>
+          </div>
+          <button 
+            onClick={() => setActiveTab('auditLog')}
+            className="text-blue-700 hover:text-blue-900 font-bold text-xs shrink-0 self-end sm:self-auto"
+          >
+            Buka Log Aktivitas & Shift →
+          </button>
+        </div>
+      )}
+    </motion.div>
+  );
+}

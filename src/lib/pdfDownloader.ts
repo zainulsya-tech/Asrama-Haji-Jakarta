@@ -297,12 +297,13 @@ export function downloadDirectInvoicePdf(
     doc.text('Kementerian Haji dan Umrah RI • Halaman 1 dari 1', 196, 280, { align: 'right' });
 
     // Trigger Save
-    const cleanFilename = `Invoice-${tx.id}-${tx.roomNumber}.pdf`;
+    const safeRoom = (tx.roomNumber || 'kamar').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const cleanFilename = `Invoice-${tx.id}-${safeRoom}.pdf`;
     doc.save(cleanFilename);
   } catch (error) {
     console.error('Error in downloadDirectInvoicePdf:', error);
     // Fallback to print
-    window.print();
+    printInvoiceDocument();
   }
 }
 
@@ -690,10 +691,23 @@ export async function downloadHtmlContentAsPdf(
 export function printInvoiceDocument(): void {
   try {
     document.body.classList.add('printing-invoice');
+
+    const handleAfterPrint = () => {
+      document.body.classList.remove('printing-invoice');
+      window.removeEventListener('afterprint', handleAfterPrint);
+    };
+
+    window.addEventListener('afterprint', handleAfterPrint);
+
     window.print();
-  } finally {
+
+    // Fallback cleanup in case afterprint does not fire in certain browser setups
     setTimeout(() => {
       document.body.classList.remove('printing-invoice');
-    }, 1000);
+      window.removeEventListener('afterprint', handleAfterPrint);
+    }, 15000);
+  } catch (err) {
+    console.error('Print invoice error:', err);
+    window.print();
   }
 }

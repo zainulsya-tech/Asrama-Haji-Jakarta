@@ -3651,6 +3651,7 @@ export function Modals() {
         tx={(modalState.modalInvoice?.data?.transaction as Transaction) || null}
         room={modalState.modalInvoice?.data?.room || null}
         returnToRoomId={modalState.modalInvoice?.data?.returnToRoomId || modalState.modalInvoice?.data?.room?.id || null}
+        onReturn={modalState.modalInvoice?.data?.onReturn}
         onExtend={(targetTx) => {
           closeModal('modalInvoice');
           openModal('modalExtend', { transaction: targetTx, returnToRoomId: targetTx.roomId });

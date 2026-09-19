@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Transaction, Room } from '../types';
 import { formatIndonesianDate, addDaysToDateStr, getRealTodayDate } from '../lib/utils';
 import { useAppContext } from '../store';
@@ -15,22 +15,44 @@ interface InvoiceModalProps {
   onEdit?: (tx: Transaction) => void;
 }
 
-export function InvoiceModal({ isOpen, onClose, tx, room, returnToRoomId, onReturn }: InvoiceModalProps) {
+export function InvoiceModal({ 
+  isOpen, 
+  onClose, 
+  tx, 
+  room, 
+  returnToRoomId, 
+  onReturn,
+  onExtend,
+  onEdit
+}: InvoiceModalProps) {
   const { currentUser, rooms, openModal, showToast } = useAppContext();
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  const currentRoom = room || (tx ? rooms.find(r => r.id === tx.roomId) : null);
+  const resolvedTargetRoomId = returnToRoomId || (currentRoom ? currentRoom.id : tx?.roomId) || null;
+  const canGoBack = Boolean(onReturn || resolvedTargetRoomId);
+
+  // Mark body with has-invoice-open class when open so @media print works directly with Ctrl+P
+  useEffect(() => {
+    if (isOpen) {
+      document.body.classList.add('has-invoice-open');
+      return () => {
+        document.body.classList.remove('has-invoice-open');
+      };
+    }
+  }, [isOpen]);
 
   if (!isOpen || !tx) return null;
 
   const isAula = tx.building === 'Ruang Pertemuan';
-  const currentRoom = room || rooms.find(r => r.id === tx.roomId);
   const checkoutDate = !isAula ? addDaysToDateStr(tx.startDate, tx.duration) : tx.startDate;
 
   const handleGoBack = () => {
     onClose();
     if (onReturn) {
       onReturn();
-    } else if (returnToRoomId) {
-      openModal('modalRoomDetail', { roomId: returnToRoomId });
+    } else if (resolvedTargetRoomId) {
+      openModal('modalRoomDetail', { roomId: resolvedTargetRoomId });
     }
   };
 
@@ -47,7 +69,7 @@ export function InvoiceModal({ isOpen, onClose, tx, room, returnToRoomId, onRetu
         currentUser?.fullName || 'Petugas Administrasi',
         currentUser?.role || 'Resepsionis'
       );
-      showToast(`Berkas PDF Invoice ${tx.id} berhasil diunduh.`, 'SUCCESS');
+      showToast(`Berkas PDF Invoice ${tx.id} berhasil diunduh.`, 'success');
     } catch (err) {
       console.error('Download PDF error:', err);
       printInvoiceDocument();
@@ -59,8 +81,14 @@ export function InvoiceModal({ isOpen, onClose, tx, room, returnToRoomId, onRetu
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto print:p-0 print:bg-white">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full overflow-hidden border border-slate-200 flex flex-col max-h-[94vh] my-auto animate-in fade-in zoom-in duration-150 print:max-h-none print:shadow-none print:border-none print:w-full">
+    <div 
+      id="invoice-modal-overlay" 
+      className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static print:inset-auto print:overflow-visible print:block print:z-auto"
+    >
+      <div 
+        id="invoice-modal-card" 
+        className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full overflow-hidden border border-slate-200 flex flex-col max-h-[94vh] my-auto animate-in fade-in zoom-in duration-150 print:max-h-none print:h-auto print:shadow-none print:border-none print:w-full print:overflow-visible print:static print:m-0 print:rounded-none"
+      >
         {/* Modal Header Toolbar */}
         <div className="bg-gradient-to-r from-hajj-800 to-hajj-900 px-6 py-3.5 text-white flex items-center justify-between shrink-0 print:hidden border-b border-gold-500/20">
           <div className="flex items-center space-x-2.5">
@@ -84,7 +112,10 @@ export function InvoiceModal({ isOpen, onClose, tx, room, returnToRoomId, onRetu
         </div>
 
         {/* Modal Content / Printable Invoice Body */}
-        <div id="invoice-printable-sheet" className="p-6 sm:p-8 space-y-5 overflow-y-auto custom-scrollbar flex-1 bg-white text-slate-800 print:p-4 print:overflow-visible">
+        <div 
+          id="invoice-printable-sheet" 
+          className="p-6 sm:p-8 space-y-5 overflow-y-auto custom-scrollbar flex-1 bg-white text-slate-800 print:p-0 print:m-0 print:overflow-visible print:w-full print:block"
+        >
           {/* 1. KOP SURAT RESMI KEMENTERIAN HAJI & UMRAH RI */}
           <div className="border-b-2 border-hajj-900 pb-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
             <div className="flex items-center space-x-3.5">
@@ -308,7 +339,7 @@ export function InvoiceModal({ isOpen, onClose, tx, room, returnToRoomId, onRetu
 
         {/* Modal Footer Actions */}
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0 print:hidden">
-          {targetRoomId ? (
+          {canGoBack ? (
             <button
               type="button"
               onClick={handleGoBack}
@@ -325,7 +356,30 @@ export function InvoiceModal({ isOpen, onClose, tx, room, returnToRoomId, onRetu
             </div>
           )}
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center flex-wrap gap-2">
+            {onExtend && (tx.status === 'TERISI' || tx.status === 'BOOKED') && (
+              <button
+                type="button"
+                onClick={() => onExtend(tx)}
+                className="px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-800 font-semibold rounded-lg text-xs border border-teal-200 transition flex items-center space-x-1.5 cursor-pointer"
+                title="Perpanjang durasi hunian"
+              >
+                <i className="fa-solid fa-clock-rotate-left text-teal-600"></i>
+                <span>Perpanjang</span>
+              </button>
+            )}
+
+            {onEdit && tx.status === 'BOOKED' && (
+              <button
+                type="button"
+                onClick={() => onEdit(tx)}
+                className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold rounded-lg text-xs border border-amber-200 transition flex items-center space-x-1.5 cursor-pointer"
+                title="Sesuaikan data reservasi"
+              >
+                <i className="fa-solid fa-pen-to-square text-amber-600"></i>
+                <span>Ubah Reservasi</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={handlePrint}

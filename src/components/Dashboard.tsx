@@ -1,14 +1,24 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../store';
 import { motion } from 'motion/react';
+import { GroupType, Transaction, Room } from '../types';
 import { addDaysToDateStr, formatIndonesianDate, getRealTodayDate } from '../lib/utils';
 
 export function Dashboard() {
-  const { rooms, transactions, openModal, maintenances, qcInspections, auditLogs, setActiveTab, currentUser } = useAppContext();
+  const { rooms, transactions, openModal, maintenances, qcInspections, auditLogs, setActiveTab, currentUser, updateBreakfastStatus, showToast } = useAppContext();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [facilityFilter, setFacilityFilter] = useState<'ALL' | 'KAMAR' | 'AULA'>('ALL');
+  const [groupTabFilter, setGroupTabFilter] = useState<'ALL' | 'JEMAAH_HAJI' | 'UMUM' | 'INSTANSI'>('ALL');
 
   const realToday = getRealTodayDate();
+
+  // Role detection for tailored operational dashboard
+  const userRole = currentUser?.role || 'Resepsionis';
+  const isResepsionis = userRole.includes('Resepsionis') || userRole.includes('Manager Resepsionis');
+  const isQc = userRole.includes('QC') || userRole.includes('Quality');
+  const isTeknisi = userRole.includes('Teknisi');
+  const isKoperasi = userRole.includes('Koperasi');
+  const isSuperAdmin = userRole === 'Super Admin' || userRole === 'Admin';
 
   // Metrics for Rooms & Aula
   const kamarRooms = rooms.filter(r => r.type === "Kamar Penginapan");
@@ -80,6 +90,106 @@ export function Dashboard() {
     });
     return Object.values(map);
   }, [activeTransactions]);
+
+  // 6. Comprehensive Group Bookings (Jemaah Haji, Tamu Umum, & Instansi)
+  const allGroups = useMemo(() => {
+    const map: Record<string, {
+      id: string;
+      groupName: string;
+      groupType: GroupType;
+      picName: string;
+      picPhone: string;
+      roomNumbers: string[];
+      roomIds: string[];
+      meetingRooms: string[];
+      memberCount: number;
+      startDate: string;
+      duration: number;
+      status: string;
+      breakfast: boolean;
+      extraBed: boolean;
+      transactions: Transaction[];
+    }> = {};
+
+    transactions.forEach(tx => {
+      if (tx.status === 'DIBATALKAN' || tx.status === 'SELESAI') return;
+
+      let key = '';
+      let detectedType: GroupType = 'UMUM';
+      let gName = '';
+      let pic = tx.groupPic || tx.phone || '-';
+
+      if (tx.groupId) {
+        key = tx.groupId;
+        detectedType = tx.groupType || (tx.category === 'JEMAAH' ? 'JEMAAH_HAJI' : 'INSTANSI');
+        gName = tx.groupName || tx.guestName;
+      } else if (tx.category === 'JEMAAH' && tx.kloter && tx.kloter !== '-') {
+        key = `KLOTER-${tx.kloter}`;
+        detectedType = 'JEMAAH_HAJI';
+        gName = `Jemaah Haji Kloter ${tx.kloter}`;
+      } else if (tx.notes && tx.notes.includes('[Rombongan:')) {
+        const match = tx.notes.match(/\[Rombongan:\s*([^\]]+)\]/);
+        gName = match ? match[1] : tx.guestName;
+        key = `GRP-${gName.replace(/\s+/g, '-').toUpperCase()}`;
+        detectedType = tx.groupType || 'UMUM';
+      }
+
+      if (key) {
+        if (!map[key]) {
+          map[key] = {
+            id: key,
+            groupName: gName,
+            groupType: detectedType,
+            picName: pic,
+            picPhone: tx.phone || '-',
+            roomNumbers: [],
+            roomIds: [],
+            meetingRooms: [],
+            memberCount: 0,
+            startDate: tx.startDate,
+            duration: tx.duration,
+            status: tx.status,
+            breakfast: false,
+            extraBed: false,
+            transactions: []
+          };
+        }
+        map[key].transactions.push(tx);
+        if (tx.building === 'Ruang Pertemuan') {
+          if (!map[key].meetingRooms.includes(tx.roomNumber)) {
+            map[key].meetingRooms.push(tx.roomNumber);
+          }
+        } else {
+          if (!map[key].roomNumbers.includes(tx.roomNumber)) {
+            map[key].roomNumbers.push(tx.roomNumber);
+            map[key].roomIds.push(tx.roomId);
+            map[key].memberCount += 4; // standard 4 beds per room
+          }
+        }
+        if (tx.breakfast) map[key].breakfast = true;
+        if (tx.extraBed) map[key].extraBed = true;
+      }
+    });
+
+    return Object.values(map);
+  }, [transactions]);
+
+  // Filtered Groups for Dashboard Section
+  const filteredGroups = useMemo(() => {
+    if (groupTabFilter === 'ALL') return allGroups;
+    return allGroups.filter(g => g.groupType === groupTabFilter);
+  }, [allGroups, groupTabFilter]);
+
+  // Role-Specific Tailored Datasets
+  // For QC: Rooms waiting for QC inspection (vacant or just checked-out)
+  const qcPendingRoomsList = useMemo(() => {
+    return rooms.filter(r => r.building !== 'Ruang Pertemuan' && (r.qcStatus === 'MENUNGGU_QC' || r.qcStatus === 'PERLU_INSPEKSI' || !r.qcStatus)).slice(0, 4);
+  }, [rooms]);
+
+  // For Teknisi: Urgent and active maintenance tickets
+  const teknisiWorkList = useMemo(() => {
+    return maintenances.filter(m => m.status !== 'SELESAI').slice(0, 4);
+  }, [maintenances]);
 
   // Building Occupancy Breakdown
   const buildings = [
@@ -204,6 +314,14 @@ export function Dashboard() {
         {/* Quick Shortcut Buttons */}
         <div className="flex items-center flex-wrap gap-2">
           <button 
+            onClick={() => openModal('modalGroupRegistration')} 
+            className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs"
+          >
+            <i className="fa-solid fa-users-rectangle text-gold-400"></i>
+            <span>Daftar Rombongan</span>
+          </button>
+
+          <button 
             onClick={() => setActiveTab('gedung')} 
             className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs"
           >
@@ -228,6 +346,406 @@ export function Dashboard() {
           </button>
         </div>
       </div>
+
+      {/* 1.5 ROLE-TAILORED OPERATIONAL FOCUS DECK (Disesuaikan Kebutuhan Masing-Masing Akun) */}
+      {isQc && (
+        <div className="bg-gradient-to-r from-teal-900 via-teal-800 to-slate-900 p-4 rounded-xl shadow-xs border border-teal-700 text-white space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-teal-700/60 pb-2.5">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-lg bg-teal-500/20 text-teal-300 border border-teal-400/40 flex items-center justify-center text-base">
+                <i className="fa-solid fa-clipboard-check"></i>
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="font-bold text-sm text-white">Ruang Kendali Mutu: Quality Control (QC)</h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-teal-400 text-teal-950">
+                    Akun QC
+                  </span>
+                </div>
+                <p className="text-[11px] text-teal-200">
+                  Prioritas verifikasi kebersihan, sprei/linen, kelistrikan, & sanitasi kamar sebelum siap dihuni kembali.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setActiveTab('qc')}
+              className="px-3 py-1.5 bg-teal-500 hover:bg-teal-400 text-teal-950 font-bold text-xs rounded-lg transition flex items-center space-x-1.5 shadow-xs self-start sm:self-auto shrink-0"
+            >
+              <span>Buka Modul QC Lengkap</span>
+              <i className="fa-solid fa-arrow-right text-[10px]"></i>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+            <div className="p-2.5 bg-white/10 rounded-lg border border-teal-600/50">
+              <span className="text-[10px] text-teal-200 font-medium">Menunggu Verifikasi QC</span>
+              <div className="text-xl font-black text-amber-300 mt-1">{waitingQcRooms} Kamar</div>
+              <span className="text-[10px] text-teal-300">Setelah checkout tamu</span>
+            </div>
+            <div className="p-2.5 bg-white/10 rounded-lg border border-teal-600/50">
+              <span className="text-[10px] text-teal-200 font-medium">Perlu Perbaikan / Servis</span>
+              <div className="text-xl font-black text-rose-300 mt-1">{rooms.filter(r => r.qcStatus === 'PERLU_PERBAIKAN').length} Kamar</div>
+              <span className="text-[10px] text-teal-300">Diteruskan ke teknisi</span>
+            </div>
+            <div className="p-2.5 bg-white/10 rounded-lg border border-teal-600/50">
+              <span className="text-[10px] text-teal-200 font-medium">Lolos Standar QC (Siap Huni)</span>
+              <div className="text-xl font-black text-emerald-300 mt-1">{readyQcRooms} Kamar</div>
+              <span className="text-[10px] text-teal-300">Siap disewakan resepsionis</span>
+            </div>
+            <div className="p-2.5 bg-white/10 rounded-lg border border-teal-600/50">
+              <span className="text-[10px] text-teal-200 font-medium">Riwayat Log Inspeksi</span>
+              <div className="text-xl font-black text-white mt-1">{qcInspections.length} Riwayat</div>
+              <span className="text-[10px] text-teal-300">Tercatat di sistem</span>
+            </div>
+          </div>
+
+          {/* Quick QC room actions */}
+          {qcPendingRoomsList.length > 0 && (
+            <div className="pt-2 border-t border-teal-700/60">
+              <div className="text-[11px] font-bold text-teal-200 mb-2 flex items-center justify-between">
+                <span>Daftar Kamar Membutuhkan Inspeksi Segera:</span>
+                <span className="text-[10px] text-teal-300 font-normal">Klik untuk mulai inspeksi instan</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                {qcPendingRoomsList.map(r => (
+                  <div key={r.id} className="p-2 bg-white/10 hover:bg-white/15 rounded-lg border border-teal-600/40 flex items-center justify-between transition">
+                    <div>
+                      <span className="font-bold text-xs text-white">{r.roomNumber}</span>
+                      <span className="text-[10px] text-teal-200 block truncate">{r.building}</span>
+                    </div>
+                    <button
+                      onClick={() => openModal('modalQcInspection', { roomId: r.id })}
+                      className="px-2.5 py-1 bg-teal-400 hover:bg-teal-300 text-teal-950 font-bold rounded text-[10px] transition shadow-xs cursor-pointer"
+                    >
+                      Inspeksi
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isTeknisi && (
+        <div className="bg-gradient-to-r from-amber-950 via-slate-900 to-amber-900 p-4 rounded-xl shadow-xs border border-amber-700/60 text-white space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-700/50 pb-2.5">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-400/40 flex items-center justify-center text-base">
+                <i className="fa-solid fa-screwdriver-wrench"></i>
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="font-bold text-sm text-white">Pusat Penanganan Tiket: Teknisi & Sarpras</h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-400 text-amber-950">
+                    Akun Teknisi
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-200">
+                  Prioritas penanganan keluhan fasilitas kamar, AC, sanitasi air, kelistrikan, dan inventaris gedung.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => openModal('modalMaintenance', { roomId: rooms[0]?.id })}
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-amber-950 font-bold text-xs rounded-lg transition flex items-center space-x-1.5 shadow-xs"
+              >
+                <i className="fa-solid fa-plus text-[10px]"></i>
+                <span>Catat Kerusakan</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('laporanMaintenance')}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-200 font-bold text-xs rounded-lg border border-amber-600/40 transition"
+              >
+                <span>Daftar Pemeliharaan →</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+            <div className="p-2.5 bg-white/10 rounded-lg border border-amber-600/40">
+              <span className="text-[10px] text-amber-200 font-medium">Tiket Urgen Menunggu</span>
+              <div className="text-xl font-black text-rose-300 mt-1">{urgentMaintenances.length} Tiket</div>
+              <span className="text-[10px] text-amber-300">Wajib segera diselesaikan</span>
+            </div>
+            <div className="p-2.5 bg-white/10 rounded-lg border border-amber-600/40">
+              <span className="text-[10px] text-amber-200 font-medium">Sedang Pengerjaan (Proses)</span>
+              <div className="text-xl font-black text-amber-300 mt-1">{activeMaintenances.filter(m => m.status === 'PROSES').length} Tiket</div>
+              <span className="text-[10px] text-amber-300">Ditangani petugas teknisi</span>
+            </div>
+            <div className="p-2.5 bg-white/10 rounded-lg border border-amber-600/40">
+              <span className="text-[10px] text-amber-200 font-medium">Kamar Status Maintenance</span>
+              <div className="text-xl font-black text-orange-300 mt-1">{maintKamar} Kamar</div>
+              <span className="text-[10px] text-amber-300">Terkunci tidak bisa disewa</span>
+            </div>
+            <div className="p-2.5 bg-white/10 rounded-lg border border-amber-600/40">
+              <span className="text-[10px] text-amber-200 font-medium">Perbaikan Selesai</span>
+              <div className="text-xl font-black text-emerald-300 mt-1">{maintenances.filter(m => m.status === 'SELESAI').length} Tiket</div>
+              <span className="text-[10px] text-amber-300">Kamar siap divalidasi QC</span>
+            </div>
+          </div>
+
+          {teknisiWorkList.length > 0 && (
+            <div className="pt-2 border-t border-amber-700/50">
+              <div className="text-[11px] font-bold text-amber-200 mb-2">Tiket Kerusakan Memerlukan Tindakan Segera:</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {teknisiWorkList.map(m => (
+                  <div key={m.id} className="p-2 bg-white/10 rounded-lg border border-amber-600/40 flex items-center justify-between text-xs">
+                    <div className="min-w-0 pr-2">
+                      <div className="font-bold text-white truncate">{m.roomNumber} - {m.issue}</div>
+                      <div className="text-[10px] text-amber-300 truncate">Pelapor: {m.reportedBy} • Urgensi: {m.urgency}</div>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('laporanMaintenance')}
+                      className="px-2.5 py-1 bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold rounded text-[10px] shrink-0"
+                    >
+                      Buka Tiket
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isKoperasi && (
+        <div className="bg-gradient-to-r from-orange-950 via-amber-900 to-slate-900 p-4 rounded-xl shadow-xs border border-orange-700/60 text-white space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-orange-700/50 pb-2.5">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-orange-300 border border-orange-400/40 flex items-center justify-center text-base">
+                <i className="fa-solid fa-utensils"></i>
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="font-bold text-sm text-white">Pusat Layanan Koperasi & Dapur Konsumsi</h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-orange-400 text-orange-950">
+                    Akun Koperasi
+                  </span>
+                </div>
+                <p className="text-[11px] text-orange-200">
+                  Monitoring pesanan sarapan jemaah haji, tamu umum, dan konsumsi ruang rapat / aula.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setActiveTab('pesananSarapan')}
+              className="px-3 py-1.5 bg-orange-400 hover:bg-orange-300 text-orange-950 font-bold text-xs rounded-lg transition flex items-center space-x-1.5 shadow-xs self-start sm:self-auto shrink-0"
+            >
+              <span>Buka Modul Sarapan Penuh</span>
+              <i className="fa-solid fa-arrow-right text-[10px]"></i>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+            <div className="p-2.5 bg-white/10 rounded-lg border border-orange-600/40">
+              <span className="text-[10px] text-orange-200 font-medium">Total Porsi Sarapan Hari Ini</span>
+              <div className="text-xl font-black text-white mt-1">{totalBreakfastPortions} Porsi</div>
+              <span className="text-[10px] text-orange-300">{activeBreakfastList.length} Kamar Pemesan</span>
+            </div>
+            <div className="p-2.5 bg-white/10 rounded-lg border border-orange-600/40">
+              <span className="text-[10px] text-orange-200 font-medium">Menunggu Dibuat di Dapur</span>
+              <div className="text-xl font-black text-amber-300 mt-1">
+                {activeBreakfastList.filter(t => !t.breakfastStatus || t.breakfastStatus === 'MENUNGGU').length} Kamar
+              </div>
+              <span className="text-[10px] text-orange-300">Siap dimasak</span>
+            </div>
+            <div className="p-2.5 bg-white/10 rounded-lg border border-orange-600/40">
+              <span className="text-[10px] text-orange-200 font-medium">Sedang Pengantaran</span>
+              <div className="text-xl font-black text-blue-300 mt-1">
+                {activeBreakfastList.filter(t => t.breakfastStatus === 'PENGANTARAN').length} Kamar
+              </div>
+              <span className="text-[10px] text-orange-300">Menuju kamar jemaah/tamu</span>
+            </div>
+            <div className="p-2.5 bg-white/10 rounded-lg border border-orange-600/40">
+              <span className="text-[10px] text-orange-200 font-medium">Selesai Diantar</span>
+              <div className="text-xl font-black text-emerald-300 mt-1">
+                {transactions.filter(t => t.breakfast && t.breakfastStatus === 'SELESAI').length} Kamar
+              </div>
+              <span className="text-[10px] text-orange-300">Pengantaran tuntas</span>
+            </div>
+          </div>
+
+          {activeBreakfastList.length > 0 && (
+            <div className="pt-2 border-t border-orange-700/50">
+              <div className="text-[11px] font-bold text-orange-200 mb-2">Pembaruan Cepat Status Pesanan Sarapan:</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {activeBreakfastList.slice(0, 4).map(tx => (
+                  <div key={tx.id} className="p-2 bg-white/10 rounded-lg border border-orange-600/40 flex items-center justify-between text-xs">
+                    <div className="min-w-0 pr-2">
+                      <div className="font-bold text-white truncate">Kamar {tx.roomNumber} ({tx.guestName})</div>
+                      <div className="text-[10px] text-orange-200 truncate">{tx.breakfastMenu} • {tx.breakfastPortions || 1} Porsi</div>
+                    </div>
+                    <div className="flex items-center space-x-1 shrink-0">
+                      {(!tx.breakfastStatus || tx.breakfastStatus === 'MENUNGGU') && (
+                        <button
+                          onClick={() => updateBreakfastStatus(tx.id, 'SEDANG_DIBUAT')}
+                          className="px-2 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded text-[10px]"
+                        >
+                          Masak
+                        </button>
+                      )}
+                      {tx.breakfastStatus === 'SEDANG_DIBUAT' && (
+                        <button
+                          onClick={() => updateBreakfastStatus(tx.id, 'PENGANTARAN')}
+                          className="px-2 py-1 bg-blue-500 hover:bg-blue-400 text-white font-bold rounded text-[10px]"
+                        >
+                          Antar
+                        </button>
+                      )}
+                      {tx.breakfastStatus === 'PENGANTARAN' && (
+                        <button
+                          onClick={() => updateBreakfastStatus(tx.id, 'SELESAI')}
+                          className="px-2 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded text-[10px]"
+                        >
+                          Selesai
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isResepsionis && (
+        <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-900 p-4 rounded-xl shadow-xs border border-emerald-700/60 text-white space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-700/50 pb-2.5">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center justify-center text-base">
+                <i className="fa-solid fa-bell-concierge"></i>
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="font-bold text-sm text-white">Meja Layanan: Resepsionis & Front Desk</h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-400 text-emerald-950">
+                    Front Office
+                  </span>
+                </div>
+                <p className="text-[11px] text-emerald-200">
+                  Pusat registrasi tamu perorangan, rombongan jemaah haji/instansi, check-in, dan penerbitan invoice resmi.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => openModal('modalGroupRegistration')}
+                className="px-3 py-1.5 bg-gold-400 hover:bg-gold-300 text-slate-950 font-bold text-xs rounded-lg transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
+              >
+                <i className="fa-solid fa-users-rectangle text-xs"></i>
+                <span>+ Registrasi Rombongan</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('gedung')}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg transition flex items-center space-x-1.5 shadow-xs"
+              >
+                <i className="fa-solid fa-bed text-xs"></i>
+                <span>Denah Kamar</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+            <div className="p-2.5 bg-white/10 rounded-lg border border-emerald-600/40">
+              <span className="text-[10px] text-emerald-200 font-medium">Jadwal Masuk (Check-In)</span>
+              <div className="text-xl font-black text-emerald-300 mt-1">{checkinTodayList.length} Kamar</div>
+              <span className="text-[10px] text-emerald-300">Siap registrasi hari ini</span>
+            </div>
+            <div className="p-2.5 bg-white/10 rounded-lg border border-emerald-600/40">
+              <span className="text-[10px] text-emerald-200 font-medium">Jadwal Keluar (Check-Out)</span>
+              <div className="text-xl font-black text-blue-300 mt-1">{checkoutTodayList.length} Kamar</div>
+              <span className="text-[10px] text-emerald-300">Kepulangan & cetak invoice</span>
+            </div>
+            <div className="p-2.5 bg-white/10 rounded-lg border border-emerald-600/40">
+              <span className="text-[10px] text-emerald-200 font-medium">Kamar Kosong Siap Huni</span>
+              <div className="text-xl font-black text-white mt-1">{kosongKamar} Kamar</div>
+              <span className="text-[10px] text-emerald-300">Tersedia untuk disewakan</span>
+            </div>
+            <div className="p-2.5 bg-white/10 rounded-lg border border-emerald-600/40">
+              <span className="text-[10px] text-emerald-200 font-medium">Rombongan Terdaftar</span>
+              <div className="text-xl font-black text-gold-300 mt-1">{allGroups.length} Rombongan</div>
+              <span className="text-[10px] text-emerald-300">Haji, Umum, & Instansi</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isSuperAdmin && (
+        <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-hajj-950 p-4 rounded-xl shadow-xs border border-gold-500/40 text-white space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gold-500/30 pb-2.5">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-lg bg-gold-400/20 text-gold-400 border border-gold-400/40 flex items-center justify-center text-base">
+                <i className="fa-solid fa-user-shield"></i>
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="font-bold text-sm text-white">Pusat Komando Pimpinan & Super Admin (Lintas Divisi)</h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-gold-400 text-slate-950">
+                    Administrator
+                  </span>
+                </div>
+                <p className="text-[11px] text-gold-200/90">
+                  Pengawasan menyeluruh lintas bagian operasional: Resepsionis, QC Standar Mutu, Teknisi Sarpras, & Koperasi.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setActiveTab('users')}
+                className="px-3 py-1.5 bg-gold-500 hover:bg-gold-400 text-slate-950 font-bold text-xs rounded-lg transition flex items-center space-x-1.5 shadow-xs"
+              >
+                <i className="fa-solid fa-users-gear text-xs"></i>
+                <span>Kelola Petugas</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('auditLog')}
+                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-gold-300 border border-gold-400/30 font-bold text-xs rounded-lg transition flex items-center space-x-1.5"
+              >
+                <i className="fa-solid fa-clock-rotate-left text-xs"></i>
+                <span>Audit & Shift</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+            <div 
+              onClick={() => setActiveTab('gedung')} 
+              className="p-2.5 bg-white/5 hover:bg-white/10 rounded-lg border border-slate-700 cursor-pointer transition"
+            >
+              <span className="text-[10px] text-slate-400 font-medium">Front Desk & Hunian</span>
+              <div className="text-base font-bold text-emerald-400 mt-1">{terisiKamar} Kamar Terisi</div>
+              <span className="text-[10px] text-slate-400">{allGroups.length} Rombongan Aktif</span>
+            </div>
+            <div 
+              onClick={() => setActiveTab('qc')} 
+              className="p-2.5 bg-white/5 hover:bg-white/10 rounded-lg border border-slate-700 cursor-pointer transition"
+            >
+              <span className="text-[10px] text-slate-400 font-medium">Quality Control (QC)</span>
+              <div className="text-base font-bold text-teal-400 mt-1">{waitingQcRooms} Butuh QC</div>
+              <span className="text-[10px] text-slate-400">{readyQcRooms} Kamar Lolos Standar</span>
+            </div>
+            <div 
+              onClick={() => setActiveTab('laporanMaintenance')} 
+              className="p-2.5 bg-white/5 hover:bg-white/10 rounded-lg border border-slate-700 cursor-pointer transition"
+            >
+              <span className="text-[10px] text-slate-400 font-medium">Teknisi & Fasilitas</span>
+              <div className="text-base font-bold text-amber-400 mt-1">{urgentMaintenances.length} Tiket Urgen</div>
+              <span className="text-[10px] text-slate-400">{maintKamar} Kamar Maintenance</span>
+            </div>
+            <div 
+              onClick={() => setActiveTab('pesananSarapan')} 
+              className="p-2.5 bg-white/5 hover:bg-white/10 rounded-lg border border-slate-700 cursor-pointer transition"
+            >
+              <span className="text-[10px] text-slate-400 font-medium">Dapur & Konsumsi</span>
+              <div className="text-base font-bold text-orange-400 mt-1">{totalBreakfastPortions} Porsi Sarapan</div>
+              <span className="text-[10px] text-slate-400">{activeBreakfastList.length} Kamar Pemesan</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 2. EXECUTIVE METRIC CARDS (6 Metrik Utama) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -580,53 +1098,254 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* 4. KLOTER TRANSIT & JADWAL JEMAAH HAJI */}
-      {activeKloters.length > 0 && (
-        <div className="bg-white p-4 rounded-xl shadow-xs border border-slate-200 space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-            <div className="flex items-center space-x-2">
-              <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-xs">
-                <i className="fa-solid fa-plane-arrival"></i>
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Rombongan Jemaah Haji Sedang Menginap</h3>
-                <p className="text-[11px] text-slate-500">Monitoring kelompok terbang (Kloter) aktif di Asrama Haji</p>
-              </div>
+      {/* 4. REGISTRASI & MANAJEMEN DATA ROMBONGAN (HAJI, UMUM, & INSTANSI) */}
+      <div className="bg-white p-4 sm:p-5 rounded-xl shadow-xs border border-slate-200 space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-hajj-50 text-hajj-800 border border-hajj-200 flex items-center justify-center font-bold text-base shadow-xs shrink-0">
+              <i className="fa-solid fa-users-rectangle"></i>
             </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-sm sm:text-base font-bold text-slate-900">
+                  Registrasi & Manajemen Data Rombongan
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                  {allGroups.length} Rombongan
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Pusat pendataan & alokasi kamar untuk Jemaah Haji (Kloter), Tamu Umum Rombongan, dan Instansi/Kedinasan.
+              </p>
+            </div>
+          </div>
+
+          {/* Action Buttons to Register Different Types of Groups */}
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => openModal('modalKloter')}
-              className="text-xs text-emerald-700 font-bold hover:underline flex items-center space-x-1"
+              type="button"
+              onClick={() => openModal('modalGroupRegistration', { defaultGroupType: 'JEMAAH_HAJI' })}
+              className="px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
             >
-              <span>Semua Kloter Haji</span>
-              <i className="fa-solid fa-arrow-right text-[10px]"></i>
+              <span>🕌</span>
+              <span>+ Jemaah Haji</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => openModal('modalGroupRegistration', { defaultGroupType: 'UMUM' })}
+              className="px-2.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
+            >
+              <span>👥</span>
+              <span>+ Tamu Umum</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => openModal('modalGroupRegistration', { defaultGroupType: 'INSTANSI' })}
+              className="px-2.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
+            >
+              <span>🏛️</span>
+              <span>+ Instansi</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Tabs for Groups */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="inline-flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setGroupTabFilter('ALL')}
+              className={`px-3 py-1 rounded-md transition cursor-pointer ${groupTabFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              Semua ({allGroups.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setGroupTabFilter('JEMAAH_HAJI')}
+              className={`px-3 py-1 rounded-md transition flex items-center space-x-1.5 cursor-pointer ${groupTabFilter === 'JEMAAH_HAJI' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              <span>🕌 Jemaah Haji</span>
+              <span className="text-[10px] px-1 py-0.2 rounded-full bg-black/10">{allGroups.filter(g => g.groupType === 'JEMAAH_HAJI').length}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setGroupTabFilter('UMUM')}
+              className={`px-3 py-1 rounded-md transition flex items-center space-x-1.5 cursor-pointer ${groupTabFilter === 'UMUM' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              <span>👥 Tamu Umum</span>
+              <span className="text-[10px] px-1 py-0.2 rounded-full bg-black/10">{allGroups.filter(g => g.groupType === 'UMUM').length}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setGroupTabFilter('INSTANSI')}
+              className={`px-3 py-1 rounded-md transition flex items-center space-x-1.5 cursor-pointer ${groupTabFilter === 'INSTANSI' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              <span>🏛️ Instansi / Dinas</span>
+              <span className="text-[10px] px-1 py-0.2 rounded-full bg-black/10">{allGroups.filter(g => g.groupType === 'INSTANSI').length}</span>
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {activeKloters.map(k => (
-              <div key={k.kloter} className="p-3 bg-emerald-50/40 rounded-xl border border-emerald-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-700 text-white">
-                    {k.kloter}
-                  </span>
-                  <span className="text-[10px] text-emerald-800 font-bold">
-                    {k.rooms.length} Kamar Digunakan
-                  </span>
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900 text-xs">{k.guestName}</h4>
-                  <p className="text-[10px] text-slate-500 mt-0.5">
-                    Est. {k.jemaahCount} Jemaah • Masuk: {k.startDate} (Durasi {k.duration} Hari)
-                  </p>
-                </div>
-                <div className="text-[10px] text-slate-600 bg-white p-1.5 rounded border border-emerald-100 font-mono truncate">
-                  Kamar: {k.rooms.join(', ')}
-                </div>
-              </div>
-            ))}
-          </div>
+          <span className="text-[11px] text-slate-500 font-medium">
+            Menampilkan {filteredGroups.length} rombongan terdaftar
+          </span>
         </div>
-      )}
+
+        {/* Group Cards Grid */}
+        {filteredGroups.length === 0 ? (
+          <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 space-y-3">
+            <div className="w-12 h-12 mx-auto rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-xl">
+              <i className="fa-solid fa-users-slash"></i>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-700">Belum Ada Data Rombongan</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Daftarkan rombongan baru untuk mengalokasikan kamar & fasilitas aula secara kolektif.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => openModal('modalGroupRegistration', { defaultGroupType: 'JEMAAH_HAJI' })}
+                className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg shadow-xs transition cursor-pointer"
+              >
+                + Jemaah Haji
+              </button>
+              <button
+                type="button"
+                onClick={() => openModal('modalGroupRegistration', { defaultGroupType: 'UMUM' })}
+                className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-lg shadow-xs transition cursor-pointer"
+              >
+                + Tamu Umum
+              </button>
+              <button
+                type="button"
+                onClick={() => openModal('modalGroupRegistration', { defaultGroupType: 'INSTANSI' })}
+                className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-lg shadow-xs transition cursor-pointer"
+              >
+                + Instansi / Dinas
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredGroups.map(group => {
+              const isHaji = group.groupType === 'JEMAAH_HAJI';
+              const isInstansi = group.groupType === 'INSTANSI';
+              const badgeBg = isHaji 
+                ? 'bg-emerald-700 text-white' 
+                : isInstansi 
+                  ? 'bg-purple-700 text-white' 
+                  : 'bg-blue-700 text-white';
+              const borderTheme = isHaji 
+                ? 'border-emerald-200 bg-emerald-50/30 hover:border-emerald-300' 
+                : isInstansi 
+                  ? 'border-purple-200 bg-purple-50/30 hover:border-purple-300' 
+                  : 'border-blue-200 bg-blue-50/30 hover:border-blue-300';
+              const iconType = isHaji ? 'fa-kaaba' : isInstansi ? 'fa-building-columns' : 'fa-users';
+              const typeLabel = isHaji ? 'Jemaah Haji' : isInstansi ? 'Instansi / Kedinasan' : 'Tamu Umum Rombongan';
+
+              // Target transaction for invoice
+              const targetTx = group.transactions[0];
+              const targetRoom = rooms.find(r => r.id === targetTx?.roomId);
+
+              return (
+                <div key={group.id} className={`p-3.5 rounded-xl border ${borderTheme} space-y-3 transition flex flex-col justify-between shadow-2xs`}>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black ${badgeBg} flex items-center space-x-1`}>
+                        <i className={`fa-solid ${iconType} text-[9px]`}></i>
+                        <span>{typeLabel}</span>
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                        {group.roomNumbers.length} Kamar {group.meetingRooms.length > 0 && `• ${group.meetingRooms.length} Aula`}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-sm leading-tight">{group.groupName}</h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
+                        <i className="fa-solid fa-user-tie text-[10px] text-slate-400"></i>
+                        <span>PIC: <strong>{group.picName}</strong> ({group.picPhone})</span>
+                      </p>
+                    </div>
+
+                    <div className="bg-white p-2 rounded-lg border border-slate-200/80 space-y-1 text-[11px]">
+                      <div className="flex justify-between text-slate-600">
+                        <span>Alokasi Kamar:</span>
+                        <span className="font-bold text-slate-800 font-mono text-right truncate max-w-[160px]">
+                          {group.roomNumbers.length > 0 ? group.roomNumbers.join(', ') : '-'}
+                        </span>
+                      </div>
+                      {group.meetingRooms.length > 0 && (
+                        <div className="flex justify-between text-purple-700">
+                          <span>Ruang Pertemuan:</span>
+                          <span className="font-bold">{group.meetingRooms.join(', ')}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-slate-600">
+                        <span>Check-In & Durasi:</span>
+                        <span className="font-medium text-slate-700">{group.startDate} ({group.duration} Hari)</span>
+                      </div>
+                      <div className="flex items-center gap-2 pt-1 border-t border-slate-100 text-[10px]">
+                        {group.breakfast && (
+                          <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold flex items-center gap-1">
+                            <i className="fa-solid fa-utensils text-[9px]"></i>
+                            <span>Sarapan</span>
+                          </span>
+                        )}
+                        {group.extraBed && (
+                          <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold flex items-center gap-1">
+                            <i className="fa-solid fa-bed text-[9px]"></i>
+                            <span>Extra Bed</span>
+                          </span>
+                        )}
+                        <span className="text-slate-400 ml-auto">Est. ~{group.memberCount} Orang</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions for group */}
+                  <div className="flex items-center gap-1.5 pt-1">
+                    {targetTx && (
+                      <button
+                        type="button"
+                        onClick={() => openModal('modalInvoice', { transaction: targetTx, room: targetRoom })}
+                        className="flex-1 py-1.5 bg-slate-900 hover:bg-hajj-800 text-white rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
+                        title="Buka dan cetak invoice resmi rombongan"
+                      >
+                        <i className="fa-solid fa-file-invoice text-gold-400 text-xs"></i>
+                        <span>Invoice Resmi</span>
+                      </button>
+                    )}
+
+                    {group.roomIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => openModal('modalRoomDetail', { roomId: group.roomIds[0] })}
+                        className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold transition cursor-pointer"
+                        title="Lihat rincian kamar"
+                      >
+                        <i className="fa-solid fa-eye"></i>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => openModal('modalGroupRegistration', { defaultGroupType: group.groupType })}
+                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold transition cursor-pointer"
+                      title="Tambah kamar untuk rombongan ini"
+                    >
+                      <i className="fa-solid fa-plus"></i>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* 5. KALENDER RESERVASI & HUNIAN BULANAN */}
       <div className="bg-white p-4 rounded-xl shadow-xs border border-slate-200 space-y-3">
@@ -677,6 +1396,24 @@ export function Dashboard() {
               </button>
               <button onClick={handleResetToCurrent} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 transition">
                 Hari Ini
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const sampleTx = transactions.find(t => t.status === 'TERISI') || transactions[0];
+                  if (sampleTx) {
+                    const r = rooms.find(room => room.id === sampleTx.roomId);
+                    openModal('modalInvoice', { transaction: sampleTx, room: r });
+                  } else {
+                    showToast('Belum ada transaksi untuk dicetak invoice.', 'info');
+                  }
+                }}
+                className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold rounded-lg border border-slate-300 transition flex items-center space-x-1.5 shadow-2xs cursor-pointer"
+                title="Cetak invoice resmi transaksi terbaru"
+              >
+                <i className="fa-solid fa-file-invoice text-emerald-600"></i>
+                <span>Invoice Resmi</span>
               </button>
             </div>
           </div>

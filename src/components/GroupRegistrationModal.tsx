@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../store';
 import { GroupType, Transaction, Room } from '../types';
 import { getRealTodayDate, formatIndonesianDate, addDaysToDateStr } from '../lib/utils';
@@ -21,6 +21,15 @@ export function GroupRegistrationModal({ isOpen, onClose, defaultGroupType = 'IN
   const [startDate, setStartDate] = useState(getRealTodayDate());
   const [duration, setDuration] = useState<number>(2);
   const [statusMode, setStatusMode] = useState<'TERISI' | 'BOOKED'>('TERISI');
+
+  useEffect(() => {
+    if (isOpen) {
+      setGroupType(defaultGroupType);
+      if (defaultGroupType === 'JEMAAH_HAJI') {
+        if (!agencyOrDocument) setAgencyOrDocument('JKG-');
+      }
+    }
+  }, [isOpen, defaultGroupType]);
 
   // Facilities allocation
   const [selectedBuildingFilter, setSelectedBuildingFilter] = useState<string>('ALL');

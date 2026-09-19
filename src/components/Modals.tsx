@@ -2906,21 +2906,36 @@ export function Modals() {
                                 </div>
                                 <div className="pt-2 border-t border-emerald-200/60 flex items-center justify-between text-[10px]">
                                   <span className="text-slate-400 font-mono">#{tx.id}</span>
-                                  <button 
-                                    onClick={() => {
-                                      closeModal('modalCalendarDetail');
-                                      openModal('modalInvoice', { 
-                                        transaction: tx, 
-                                        room: rooms.find(r => r.id === tx.roomId),
-                                        onReturn: () => openModal('modalCalendarDetail', calendarDetailData)
-                                      });
-                                    }} 
-                                    className="px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-800 font-bold rounded-md border border-emerald-300 flex items-center space-x-1.5 transition shadow-2xs cursor-pointer"
-                                    title="Lihat & Cetak Invoice Resmi"
-                                  >
-                                    <i className="fa-solid fa-file-invoice text-emerald-700"></i>
-                                    <span>Invoice</span>
-                                  </button>
+                                  <div className="flex items-center space-x-1.5">
+                                    <button 
+                                      type="button"
+                                      onClick={() => {
+                                        closeModal('modalCalendarDetail');
+                                        openModal('modalRoomDetail', { roomId: tx.roomId });
+                                      }} 
+                                      className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-md border border-slate-200 flex items-center space-x-1 transition shadow-2xs cursor-pointer"
+                                      title="Lihat Rincian Kamar"
+                                    >
+                                      <i className="fa-solid fa-eye text-slate-500"></i>
+                                      <span>Kamar</span>
+                                    </button>
+                                    <button 
+                                      type="button"
+                                      onClick={() => {
+                                        closeModal('modalCalendarDetail');
+                                        openModal('modalInvoice', { 
+                                          transaction: tx, 
+                                          room: rooms.find(r => r.id === tx.roomId),
+                                          onReturn: () => openModal('modalCalendarDetail', calendarDetailData)
+                                        });
+                                      }} 
+                                      className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-md shadow-xs flex items-center space-x-1.5 transition cursor-pointer"
+                                      title="Buka & Cetak Invoice Resmi"
+                                    >
+                                      <i className="fa-solid fa-file-invoice text-emerald-200"></i>
+                                      <span>Invoice Resmi</span>
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             ))}
@@ -2974,21 +2989,36 @@ export function Modals() {
                                 </div>
                                 <div className="pt-2 border-t border-purple-200/60 flex items-center justify-between text-[10px]">
                                   <span className="text-slate-400 font-mono">#{tx.id}</span>
-                                  <button 
-                                    onClick={() => {
-                                      closeModal('modalCalendarDetail');
-                                      openModal('modalInvoice', { 
-                                        transaction: tx, 
-                                        room: rooms.find(r => r.id === tx.roomId),
-                                        onReturn: () => openModal('modalCalendarDetail', calendarDetailData)
-                                      });
-                                    }} 
-                                    className="px-2.5 py-1 bg-white hover:bg-purple-100 text-purple-800 font-bold rounded-md border border-purple-300 flex items-center space-x-1.5 transition shadow-2xs cursor-pointer"
-                                    title="Lihat & Cetak Invoice Resmi"
-                                  >
-                                    <i className="fa-solid fa-file-invoice text-purple-700"></i>
-                                    <span>Invoice</span>
-                                  </button>
+                                  <div className="flex items-center space-x-1.5">
+                                    <button 
+                                      type="button"
+                                      onClick={() => {
+                                        closeModal('modalCalendarDetail');
+                                        openModal('modalRoomDetail', { roomId: tx.roomId });
+                                      }} 
+                                      className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-md border border-slate-200 flex items-center space-x-1 transition shadow-2xs cursor-pointer"
+                                      title="Lihat Rincian Aula"
+                                    >
+                                      <i className="fa-solid fa-eye text-slate-500"></i>
+                                      <span>Aula</span>
+                                    </button>
+                                    <button 
+                                      type="button"
+                                      onClick={() => {
+                                        closeModal('modalCalendarDetail');
+                                        openModal('modalInvoice', { 
+                                          transaction: tx, 
+                                          room: rooms.find(r => r.id === tx.roomId),
+                                          onReturn: () => openModal('modalCalendarDetail', calendarDetailData)
+                                        });
+                                      }} 
+                                      className="px-2.5 py-1 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-md shadow-xs flex items-center space-x-1.5 transition cursor-pointer"
+                                      title="Buka & Cetak Invoice Resmi"
+                                    >
+                                      <i className="fa-solid fa-file-invoice text-purple-200"></i>
+                                      <span>Invoice Resmi</span>
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             ))}
@@ -3013,66 +3043,13 @@ export function Modals() {
       )}
 
       {isReceiptOpen && receiptTx && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-100 flex flex-col max-h-[92vh] my-auto animate-in fade-in zoom-in duration-150">
-              <div className="p-6 space-y-4 text-xs overflow-y-auto flex-1 custom-scrollbar">
-                  <div className="text-center border-b border-slate-200 pb-4">
-                      <div className="w-12 h-12 bg-hajj-800 text-gold-400 rounded-xl flex items-center justify-center mx-auto mb-2 text-2xl">
-                          <i className="fa-solid fa-kaaba"></i>
-                      </div>
-                      <h3 className="font-bold text-sm text-slate-900">UPT ASRAMA HAJI JAKARTA</h3>
-                      <p className="text-[10px] text-slate-500">Jl. Raya Kencana Murni, Pinang Ranti, Jakarta Timur</p>
-                      <div className="mt-2 inline-block px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-[10px]">KWITANSI BUKTI PEMBAYARAN</div>
-                  </div>
-
-                  <div className="space-y-2">
-                      <div className="flex justify-between">
-                          <span className="text-slate-500">No. Transaksi:</span>
-                          <span className="font-bold font-mono text-slate-800">#{receiptTx.id}</span>
-                      </div>
-                      <div className="flex justify-between">
-                          <span className="text-slate-500">Tanggal Transaksi:</span>
-                          <span className="font-medium text-slate-800">{receiptTx.startDate}</span>
-                      </div>
-                      <div className="flex justify-between">
-                          <span className="text-slate-500">Nama Penyewa/Instansi:</span>
-                          <span className="font-bold text-slate-800">{receiptTx.guestName}</span>
-                      </div>
-                      <div className="flex justify-between">
-                          <span className="text-slate-500">Kategori:</span>
-                          <span className="font-medium text-slate-800">{receiptTx.category === 'JEMAAH' ? `Jemaah Haji (${receiptTx.kloter})` : 'Tamu Umum / Penyewa'}</span>
-                      </div>
-                      <div className="flex justify-between">
-                          <span className="text-slate-500">Fasilitas / Room:</span>
-                          <span className="font-bold text-hajj-800">{receiptTx.building} - {receiptTx.roomNumber}</span>
-                      </div>
-                      <div className="flex justify-between">
-                          <span className="text-slate-500">Durasi Sewa:</span>
-                          <span className="font-medium text-slate-800">{receiptTx.duration} {receiptTx.durationUnit || 'Malam'} {receiptTx.rentType ? `(${receiptTx.rentType})` : ''}</span>
-                      </div>
-                      {receiptTx.breakfast && (
-                        <div className="flex justify-between">
-                            <span className="text-slate-500">Sarapan Pagi:</span>
-                            <span className="font-medium text-slate-800">{receiptTx.breakfastMenu}</span>
-                        </div>
-                      )}
-                  </div>
-
-                  <div className="text-[10px] text-slate-400 text-center space-y-1 pt-3 border-t border-dashed border-slate-300">
-                      <p>Terima kasih telah mempercayakan akomodasi di UPT Asrama Haji Jakarta.</p>
-                      <p className="font-semibold text-slate-600">Petugas: <span>{receiptTx.createdUser}</span></p>
-                  </div>
-              </div>
-
-              <div className="bg-slate-50 p-4 border-t border-slate-100 flex items-center justify-end space-x-2 no-print shrink-0">
-                  <button onClick={() => closeModal('modalReceipt')} className="px-4 py-2 bg-slate-200 text-slate-700 font-bold rounded-lg text-xs">Tutup</button>
-                  <button onClick={() => window.print()} className="px-4 py-2 bg-hajj-700 hover:bg-hajj-800 text-white font-bold rounded-lg text-xs shadow flex items-center space-x-1">
-                      <i className="fa-solid fa-print"></i>
-                      <span>Cetak Kwitansi</span>
-                  </button>
-              </div>
-          </div>
-        </div>
+        <InvoiceModal 
+          isOpen={true}
+          onClose={() => closeModal('modalReceipt')}
+          tx={receiptTx}
+          room={rooms.find(r => r.id === receiptTx.roomId) || null}
+          returnToRoomId={receiptTx.roomId}
+        />
       )}
 
       {isCheckoutSelectionOpen && (() => {

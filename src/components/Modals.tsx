@@ -2811,19 +2811,50 @@ export function Modals() {
                 const kamarTxs = allTxs.filter(t => t.building !== 'Ruang Pertemuan');
                 const aulaTxs = allTxs.filter(t => t.building === 'Ruang Pertemuan');
                 return (
-                  <div className="bg-slate-50 border-b border-slate-200 px-6 py-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
-                    <div className="flex items-center space-x-3 text-xs">
-                      <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold flex items-center space-x-1.5 border border-emerald-200">
+                  <div className="bg-slate-50 border-b border-slate-200 px-6 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold flex items-center space-x-1.5 border border-emerald-200">
                         <i className="fa-solid fa-bed text-emerald-600"></i>
                         <span>{kamarTxs.length} Kamar Terisi/Booked</span>
                       </span>
-                      <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full font-bold flex items-center space-x-1.5 border border-purple-200">
+                      <span className="px-2.5 py-1 bg-purple-100 text-purple-800 rounded-full font-bold flex items-center space-x-1.5 border border-purple-200">
                         <i className="fa-solid fa-landmark text-purple-600"></i>
-                        <span>{aulaTxs.length} Ruang Pertemuan Disewa</span>
+                        <span>{aulaTxs.length} Aula Disewa</span>
                       </span>
                     </div>
-                    <div className="text-xs text-slate-500 font-medium">
-                      Total Aktivitas: <span className="font-bold text-slate-800">{allTxs.length}</span> Event
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          closeModal('modalCalendarDetail');
+                          const vacantRoom = rooms.find(r => r.status === 'KOSONG' && r.building !== 'Ruang Pertemuan') || rooms[0];
+                          if (vacantRoom) {
+                            openModal('modalCheckin', { roomId: vacantRoom.id, actionType: 'BOOKING', initialDate: calendarDetailData.dateStr });
+                          }
+                        }}
+                        className="px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1 shadow-xs cursor-pointer"
+                        title="Booking kamar langsung untuk tanggal ini"
+                      >
+                        <i className="fa-solid fa-calendar-plus text-gold-300 text-xs"></i>
+                        <span>+ Booking Kamar</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          closeModal('modalCalendarDetail');
+                          const aulaRoom = rooms.find(r => r.building === 'Ruang Pertemuan') || rooms[rooms.length - 1];
+                          if (aulaRoom) {
+                            openModal('modalCheckin', { roomId: aulaRoom.id, actionType: 'BOOKING', initialDate: calendarDetailData.dateStr, initialDuration: 8 });
+                          }
+                        }}
+                        className="px-2.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1 shadow-xs cursor-pointer"
+                        title="Sewa aula ruang pertemuan untuk tanggal ini"
+                      >
+                        <i className="fa-solid fa-landmark text-xs"></i>
+                        <span>+ Sewa Aula</span>
+                      </button>
                     </div>
                   </div>
                 );
@@ -3658,6 +3689,10 @@ export function Modals() {
         isOpen={Boolean(modalState.modalGroupRegistration?.isOpen)}
         onClose={() => closeModal('modalGroupRegistration')}
         defaultGroupType={modalState.modalGroupRegistration?.data?.defaultGroupType || 'INSTANSI'}
+        initialGroupName={modalState.modalGroupRegistration?.data?.initialGroupName}
+        initialPicName={modalState.modalGroupRegistration?.data?.initialPicName}
+        initialPicPhone={modalState.modalGroupRegistration?.data?.initialPicPhone}
+        initialMembers={modalState.modalGroupRegistration?.data?.initialMembers}
       />
     </>
   );

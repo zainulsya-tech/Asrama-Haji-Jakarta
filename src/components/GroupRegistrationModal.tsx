@@ -7,17 +7,29 @@ interface GroupRegistrationModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultGroupType?: GroupType;
+  initialGroupName?: string;
+  initialPicName?: string;
+  initialPicPhone?: string;
+  initialMembers?: number;
 }
 
-export function GroupRegistrationModal({ isOpen, onClose, defaultGroupType = 'INSTANSI' }: GroupRegistrationModalProps) {
+export function GroupRegistrationModal({ 
+  isOpen, 
+  onClose, 
+  defaultGroupType = 'INSTANSI',
+  initialGroupName = '',
+  initialPicName = '',
+  initialPicPhone = '',
+  initialMembers = 20
+}: GroupRegistrationModalProps) {
   const { rooms, currentUser, addGroupBooking, showToast } = useAppContext();
 
   const [groupType, setGroupType] = useState<GroupType>(defaultGroupType);
-  const [groupName, setGroupName] = useState('');
-  const [picName, setPicName] = useState('');
-  const [picPhone, setPicPhone] = useState('');
+  const [groupName, setGroupName] = useState(initialGroupName);
+  const [picName, setPicName] = useState(initialPicName);
+  const [picPhone, setPicPhone] = useState(initialPicPhone);
   const [agencyOrDocument, setAgencyOrDocument] = useState('');
-  const [estimatedMembers, setEstimatedMembers] = useState<number>(20);
+  const [estimatedMembers, setEstimatedMembers] = useState<number>(initialMembers || 20);
   const [startDate, setStartDate] = useState(getRealTodayDate());
   const [duration, setDuration] = useState<number>(2);
   const [statusMode, setStatusMode] = useState<'TERISI' | 'BOOKED'>('TERISI');
@@ -25,11 +37,15 @@ export function GroupRegistrationModal({ isOpen, onClose, defaultGroupType = 'IN
   useEffect(() => {
     if (isOpen) {
       setGroupType(defaultGroupType);
+      if (initialGroupName) setGroupName(initialGroupName);
+      if (initialPicName) setPicName(initialPicName);
+      if (initialPicPhone) setPicPhone(initialPicPhone);
+      if (initialMembers) setEstimatedMembers(initialMembers);
       if (defaultGroupType === 'JEMAAH_HAJI') {
         if (!agencyOrDocument) setAgencyOrDocument('JKG-');
       }
     }
-  }, [isOpen, defaultGroupType]);
+  }, [isOpen, defaultGroupType, initialGroupName, initialPicName, initialPicPhone, initialMembers]);
 
   // Facilities allocation
   const [selectedBuildingFilter, setSelectedBuildingFilter] = useState<string>('ALL');

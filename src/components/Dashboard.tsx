@@ -311,35 +311,125 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Quick Shortcut Buttons */}
+        {/* Quick Action Bar - Langsung sinkron ke Booking Kamar, Rombongan, Invoice, & Modul Terkait */}
         <div className="flex items-center flex-wrap gap-2">
+          {/* Booking Kamar Baru */}
           <button 
+            type="button"
+            onClick={() => {
+              const vacantRoom = rooms.find(r => r.status === 'KOSONG' && r.building !== 'Ruang Pertemuan') || rooms[0];
+              if (vacantRoom) {
+                const tmr = new Date();
+                tmr.setDate(tmr.getDate() + 1);
+                const tmrStr = tmr.toISOString().split('T')[0];
+                openModal('modalCheckin', { roomId: vacantRoom.id, actionType: 'BOOKING', initialDate: tmrStr });
+              } else {
+                setActiveTab('gedung');
+              }
+            }} 
+            className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
+            title="Buka form reservasi / booking kamar penginapan"
+          >
+            <i className="fa-solid fa-calendar-plus text-gold-300"></i>
+            <span>+ Booking Kamar</span>
+          </button>
+
+          {/* Registrasi Rombongan */}
+          <button 
+            type="button"
             onClick={() => openModal('modalGroupRegistration')} 
-            className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs"
+            className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
+            title="Daftarkan rombongan jemaah haji, umum, atau instansi"
           >
             <i className="fa-solid fa-users-rectangle text-gold-400"></i>
-            <span>Daftar Rombongan</span>
+            <span>+ Rombongan</span>
           </button>
 
+          {/* Invoice Resmi */}
           <button 
-            onClick={() => setActiveTab('gedung')} 
-            className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs"
+            type="button"
+            onClick={() => {
+              const sampleTx = transactions.find(t => t.status === 'TERISI') || transactions[0];
+              if (sampleTx) {
+                const r = rooms.find(room => room.id === sampleTx.roomId);
+                openModal('modalInvoice', { transaction: sampleTx, room: r });
+              } else {
+                showToast('Belum ada transaksi aktif untuk dicetak invoice.', 'info');
+              }
+            }} 
+            className="px-3 py-1.5 bg-slate-900 hover:bg-hajj-800 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
+            title="Buka & cetak invoice resmi transaksi terkini"
           >
-            <i className="fa-solid fa-door-open"></i>
-            <span>Check-In & Kamar</span>
+            <i className="fa-solid fa-file-invoice text-gold-400"></i>
+            <span>Invoice Resmi</span>
           </button>
 
+          {/* Role Adaptive Quick Actions */}
+          {isQc && (
+            <button 
+              type="button"
+              onClick={() => {
+                const targetQc = rooms.find(r => r.qcStatus === 'MENUNGGU_VERIFIKASI_QC') || rooms.find(r => r.qcStatus === 'PERLU_PERBAIKAN') || rooms[0];
+                if (targetQc) openModal('modalQcInspection', { room: targetQc });
+                else setActiveTab('qc');
+              }}
+              className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
+              title="Inspeksi Kendali Mutu Kamar"
+            >
+              <i className="fa-solid fa-clipboard-check"></i>
+              <span>Inspeksi QC</span>
+            </button>
+          )}
+
+          {isTeknisi && (
+            <button 
+              type="button"
+              onClick={() => setActiveTab('laporanMaintenance')}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
+              title="Lihat Daftar Tiket Perbaikan & Sarpras"
+            >
+              <i className="fa-solid fa-wrench"></i>
+              <span>Tiket Teknisi</span>
+            </button>
+          )}
+
+          {isKoperasi && (
+            <button 
+              type="button"
+              onClick={() => setActiveTab('pesananSarapan')}
+              className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
+              title="Kelola Pesanan Sarapan Kamar"
+            >
+              <i className="fa-solid fa-utensils"></i>
+              <span>Dapur Sarapan</span>
+            </button>
+          )}
+
+          {/* Denah Kamar & Check-In */}
           <button 
+            type="button"
+            onClick={() => setActiveTab('gedung')} 
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
+          >
+            <i className="fa-solid fa-door-open text-slate-600"></i>
+            <span>Denah Kamar</span>
+          </button>
+
+          {/* Lapor Kerusakan */}
+          <button 
+            type="button"
             onClick={() => openModal('modalMaintenance', { roomId: rooms[0]?.id })} 
-            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs"
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
           >
             <i className="fa-solid fa-triangle-exclamation"></i>
             <span>Lapor Kerusakan</span>
           </button>
 
+          {/* Unduh Laporan */}
           <button 
+            type="button"
             onClick={() => openModal('modalExport')} 
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs"
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
           >
             <i className="fa-solid fa-file-arrow-down"></i>
             <span>Unduh Laporan</span>
@@ -347,427 +437,38 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* 1.5 ROLE-TAILORED OPERATIONAL FOCUS DECK (Disesuaikan Kebutuhan Masing-Masing Akun) */}
-      {isQc && (
-        <div className="bg-gradient-to-r from-teal-900 via-teal-800 to-slate-900 p-4 rounded-xl shadow-xs border border-teal-700 text-white space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-teal-700/60 pb-2.5">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-lg bg-teal-500/20 text-teal-300 border border-teal-400/40 flex items-center justify-center text-base">
-                <i className="fa-solid fa-clipboard-check"></i>
-              </div>
-              <div>
-                <div className="flex items-center space-x-2">
-                  <h3 className="font-bold text-sm text-white">Ruang Kendali Mutu: Quality Control (QC)</h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-teal-400 text-teal-950">
-                    Akun QC
-                  </span>
-                </div>
-                <p className="text-[11px] text-teal-200">
-                  Prioritas verifikasi kebersihan, sprei/linen, kelistrikan, & sanitasi kamar sebelum siap dihuni kembali.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setActiveTab('qc')}
-              className="px-3 py-1.5 bg-teal-500 hover:bg-teal-400 text-teal-950 font-bold text-xs rounded-lg transition flex items-center space-x-1.5 shadow-xs self-start sm:self-auto shrink-0"
-            >
-              <span>Buka Modul QC Lengkap</span>
-              <i className="fa-solid fa-arrow-right text-[10px]"></i>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-            <div className="p-2.5 bg-white/10 rounded-lg border border-teal-600/50">
-              <span className="text-[10px] text-teal-200 font-medium">Menunggu Verifikasi QC</span>
-              <div className="text-xl font-black text-amber-300 mt-1">{waitingQcRooms} Kamar</div>
-              <span className="text-[10px] text-teal-300">Setelah checkout tamu</span>
-            </div>
-            <div className="p-2.5 bg-white/10 rounded-lg border border-teal-600/50">
-              <span className="text-[10px] text-teal-200 font-medium">Perlu Perbaikan / Servis</span>
-              <div className="text-xl font-black text-rose-300 mt-1">{rooms.filter(r => r.qcStatus === 'PERLU_PERBAIKAN').length} Kamar</div>
-              <span className="text-[10px] text-teal-300">Diteruskan ke teknisi</span>
-            </div>
-            <div className="p-2.5 bg-white/10 rounded-lg border border-teal-600/50">
-              <span className="text-[10px] text-teal-200 font-medium">Lolos Standar QC (Siap Huni)</span>
-              <div className="text-xl font-black text-emerald-300 mt-1">{readyQcRooms} Kamar</div>
-              <span className="text-[10px] text-teal-300">Siap disewakan resepsionis</span>
-            </div>
-            <div className="p-2.5 bg-white/10 rounded-lg border border-teal-600/50">
-              <span className="text-[10px] text-teal-200 font-medium">Riwayat Log Inspeksi</span>
-              <div className="text-xl font-black text-white mt-1">{qcInspections.length} Riwayat</div>
-              <span className="text-[10px] text-teal-300">Tercatat di sistem</span>
-            </div>
-          </div>
-
-          {/* Quick QC room actions */}
-          {qcPendingRoomsList.length > 0 && (
-            <div className="pt-2 border-t border-teal-700/60">
-              <div className="text-[11px] font-bold text-teal-200 mb-2 flex items-center justify-between">
-                <span>Daftar Kamar Membutuhkan Inspeksi Segera:</span>
-                <span className="text-[10px] text-teal-300 font-normal">Klik untuk mulai inspeksi instan</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                {qcPendingRoomsList.map(r => (
-                  <div key={r.id} className="p-2 bg-white/10 hover:bg-white/15 rounded-lg border border-teal-600/40 flex items-center justify-between transition">
-                    <div>
-                      <span className="font-bold text-xs text-white">{r.roomNumber}</span>
-                      <span className="text-[10px] text-teal-200 block truncate">{r.building}</span>
-                    </div>
-                    <button
-                      onClick={() => openModal('modalQcInspection', { roomId: r.id })}
-                      className="px-2.5 py-1 bg-teal-400 hover:bg-teal-300 text-teal-950 font-bold rounded text-[10px] transition shadow-xs cursor-pointer"
-                    >
-                      Inspeksi
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {isTeknisi && (
-        <div className="bg-gradient-to-r from-amber-950 via-slate-900 to-amber-900 p-4 rounded-xl shadow-xs border border-amber-700/60 text-white space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-700/50 pb-2.5">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-400/40 flex items-center justify-center text-base">
-                <i className="fa-solid fa-screwdriver-wrench"></i>
-              </div>
-              <div>
-                <div className="flex items-center space-x-2">
-                  <h3 className="font-bold text-sm text-white">Pusat Penanganan Tiket: Teknisi & Sarpras</h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-400 text-amber-950">
-                    Akun Teknisi
-                  </span>
-                </div>
-                <p className="text-[11px] text-amber-200">
-                  Prioritas penanganan keluhan fasilitas kamar, AC, sanitasi air, kelistrikan, dan inventaris gedung.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => openModal('modalMaintenance', { roomId: rooms[0]?.id })}
-                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-amber-950 font-bold text-xs rounded-lg transition flex items-center space-x-1.5 shadow-xs"
-              >
-                <i className="fa-solid fa-plus text-[10px]"></i>
-                <span>Catat Kerusakan</span>
-              </button>
-              <button
-                onClick={() => setActiveTab('laporanMaintenance')}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-200 font-bold text-xs rounded-lg border border-amber-600/40 transition"
-              >
-                <span>Daftar Pemeliharaan →</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-            <div className="p-2.5 bg-white/10 rounded-lg border border-amber-600/40">
-              <span className="text-[10px] text-amber-200 font-medium">Tiket Urgen Menunggu</span>
-              <div className="text-xl font-black text-rose-300 mt-1">{urgentMaintenances.length} Tiket</div>
-              <span className="text-[10px] text-amber-300">Wajib segera diselesaikan</span>
-            </div>
-            <div className="p-2.5 bg-white/10 rounded-lg border border-amber-600/40">
-              <span className="text-[10px] text-amber-200 font-medium">Sedang Pengerjaan (Proses)</span>
-              <div className="text-xl font-black text-amber-300 mt-1">{activeMaintenances.filter(m => m.status === 'PROSES').length} Tiket</div>
-              <span className="text-[10px] text-amber-300">Ditangani petugas teknisi</span>
-            </div>
-            <div className="p-2.5 bg-white/10 rounded-lg border border-amber-600/40">
-              <span className="text-[10px] text-amber-200 font-medium">Kamar Status Maintenance</span>
-              <div className="text-xl font-black text-orange-300 mt-1">{maintKamar} Kamar</div>
-              <span className="text-[10px] text-amber-300">Terkunci tidak bisa disewa</span>
-            </div>
-            <div className="p-2.5 bg-white/10 rounded-lg border border-amber-600/40">
-              <span className="text-[10px] text-amber-200 font-medium">Perbaikan Selesai</span>
-              <div className="text-xl font-black text-emerald-300 mt-1">{maintenances.filter(m => m.status === 'SELESAI').length} Tiket</div>
-              <span className="text-[10px] text-amber-300">Kamar siap divalidasi QC</span>
-            </div>
-          </div>
-
-          {teknisiWorkList.length > 0 && (
-            <div className="pt-2 border-t border-amber-700/50">
-              <div className="text-[11px] font-bold text-amber-200 mb-2">Tiket Kerusakan Memerlukan Tindakan Segera:</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {teknisiWorkList.map(m => (
-                  <div key={m.id} className="p-2 bg-white/10 rounded-lg border border-amber-600/40 flex items-center justify-between text-xs">
-                    <div className="min-w-0 pr-2">
-                      <div className="font-bold text-white truncate">{m.roomNumber} - {m.issue}</div>
-                      <div className="text-[10px] text-amber-300 truncate">Pelapor: {m.reportedBy} • Urgensi: {m.urgency}</div>
-                    </div>
-                    <button
-                      onClick={() => setActiveTab('laporanMaintenance')}
-                      className="px-2.5 py-1 bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold rounded text-[10px] shrink-0"
-                    >
-                      Buka Tiket
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {isKoperasi && (
-        <div className="bg-gradient-to-r from-orange-950 via-amber-900 to-slate-900 p-4 rounded-xl shadow-xs border border-orange-700/60 text-white space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-orange-700/50 pb-2.5">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-orange-300 border border-orange-400/40 flex items-center justify-center text-base">
-                <i className="fa-solid fa-utensils"></i>
-              </div>
-              <div>
-                <div className="flex items-center space-x-2">
-                  <h3 className="font-bold text-sm text-white">Pusat Layanan Koperasi & Dapur Konsumsi</h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-orange-400 text-orange-950">
-                    Akun Koperasi
-                  </span>
-                </div>
-                <p className="text-[11px] text-orange-200">
-                  Monitoring pesanan sarapan jemaah haji, tamu umum, dan konsumsi ruang rapat / aula.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setActiveTab('pesananSarapan')}
-              className="px-3 py-1.5 bg-orange-400 hover:bg-orange-300 text-orange-950 font-bold text-xs rounded-lg transition flex items-center space-x-1.5 shadow-xs self-start sm:self-auto shrink-0"
-            >
-              <span>Buka Modul Sarapan Penuh</span>
-              <i className="fa-solid fa-arrow-right text-[10px]"></i>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-            <div className="p-2.5 bg-white/10 rounded-lg border border-orange-600/40">
-              <span className="text-[10px] text-orange-200 font-medium">Total Porsi Sarapan Hari Ini</span>
-              <div className="text-xl font-black text-white mt-1">{totalBreakfastPortions} Porsi</div>
-              <span className="text-[10px] text-orange-300">{activeBreakfastList.length} Kamar Pemesan</span>
-            </div>
-            <div className="p-2.5 bg-white/10 rounded-lg border border-orange-600/40">
-              <span className="text-[10px] text-orange-200 font-medium">Menunggu Dibuat di Dapur</span>
-              <div className="text-xl font-black text-amber-300 mt-1">
-                {activeBreakfastList.filter(t => !t.breakfastStatus || t.breakfastStatus === 'MENUNGGU').length} Kamar
-              </div>
-              <span className="text-[10px] text-orange-300">Siap dimasak</span>
-            </div>
-            <div className="p-2.5 bg-white/10 rounded-lg border border-orange-600/40">
-              <span className="text-[10px] text-orange-200 font-medium">Sedang Pengantaran</span>
-              <div className="text-xl font-black text-blue-300 mt-1">
-                {activeBreakfastList.filter(t => t.breakfastStatus === 'PENGANTARAN').length} Kamar
-              </div>
-              <span className="text-[10px] text-orange-300">Menuju kamar jemaah/tamu</span>
-            </div>
-            <div className="p-2.5 bg-white/10 rounded-lg border border-orange-600/40">
-              <span className="text-[10px] text-orange-200 font-medium">Selesai Diantar</span>
-              <div className="text-xl font-black text-emerald-300 mt-1">
-                {transactions.filter(t => t.breakfast && t.breakfastStatus === 'SELESAI').length} Kamar
-              </div>
-              <span className="text-[10px] text-orange-300">Pengantaran tuntas</span>
-            </div>
-          </div>
-
-          {activeBreakfastList.length > 0 && (
-            <div className="pt-2 border-t border-orange-700/50">
-              <div className="text-[11px] font-bold text-orange-200 mb-2">Pembaruan Cepat Status Pesanan Sarapan:</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {activeBreakfastList.slice(0, 4).map(tx => (
-                  <div key={tx.id} className="p-2 bg-white/10 rounded-lg border border-orange-600/40 flex items-center justify-between text-xs">
-                    <div className="min-w-0 pr-2">
-                      <div className="font-bold text-white truncate">Kamar {tx.roomNumber} ({tx.guestName})</div>
-                      <div className="text-[10px] text-orange-200 truncate">{tx.breakfastMenu} • {tx.breakfastPortions || 1} Porsi</div>
-                    </div>
-                    <div className="flex items-center space-x-1 shrink-0">
-                      {(!tx.breakfastStatus || tx.breakfastStatus === 'MENUNGGU') && (
-                        <button
-                          onClick={() => updateBreakfastStatus(tx.id, 'SEDANG_DIBUAT')}
-                          className="px-2 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded text-[10px]"
-                        >
-                          Masak
-                        </button>
-                      )}
-                      {tx.breakfastStatus === 'SEDANG_DIBUAT' && (
-                        <button
-                          onClick={() => updateBreakfastStatus(tx.id, 'PENGANTARAN')}
-                          className="px-2 py-1 bg-blue-500 hover:bg-blue-400 text-white font-bold rounded text-[10px]"
-                        >
-                          Antar
-                        </button>
-                      )}
-                      {tx.breakfastStatus === 'PENGANTARAN' && (
-                        <button
-                          onClick={() => updateBreakfastStatus(tx.id, 'SELESAI')}
-                          className="px-2 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded text-[10px]"
-                        >
-                          Selesai
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {isResepsionis && (
-        <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-900 p-4 rounded-xl shadow-xs border border-emerald-700/60 text-white space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-700/50 pb-2.5">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center justify-center text-base">
-                <i className="fa-solid fa-bell-concierge"></i>
-              </div>
-              <div>
-                <div className="flex items-center space-x-2">
-                  <h3 className="font-bold text-sm text-white">Meja Layanan: Resepsionis & Front Desk</h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-400 text-emerald-950">
-                    Front Office
-                  </span>
-                </div>
-                <p className="text-[11px] text-emerald-200">
-                  Pusat registrasi tamu perorangan, rombongan jemaah haji/instansi, check-in, dan penerbitan invoice resmi.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => openModal('modalGroupRegistration')}
-                className="px-3 py-1.5 bg-gold-400 hover:bg-gold-300 text-slate-950 font-bold text-xs rounded-lg transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
-              >
-                <i className="fa-solid fa-users-rectangle text-xs"></i>
-                <span>+ Registrasi Rombongan</span>
-              </button>
-              <button
-                onClick={() => setActiveTab('gedung')}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg transition flex items-center space-x-1.5 shadow-xs"
-              >
-                <i className="fa-solid fa-bed text-xs"></i>
-                <span>Denah Kamar</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-            <div className="p-2.5 bg-white/10 rounded-lg border border-emerald-600/40">
-              <span className="text-[10px] text-emerald-200 font-medium">Jadwal Masuk (Check-In)</span>
-              <div className="text-xl font-black text-emerald-300 mt-1">{checkinTodayList.length} Kamar</div>
-              <span className="text-[10px] text-emerald-300">Siap registrasi hari ini</span>
-            </div>
-            <div className="p-2.5 bg-white/10 rounded-lg border border-emerald-600/40">
-              <span className="text-[10px] text-emerald-200 font-medium">Jadwal Keluar (Check-Out)</span>
-              <div className="text-xl font-black text-blue-300 mt-1">{checkoutTodayList.length} Kamar</div>
-              <span className="text-[10px] text-emerald-300">Kepulangan & cetak invoice</span>
-            </div>
-            <div className="p-2.5 bg-white/10 rounded-lg border border-emerald-600/40">
-              <span className="text-[10px] text-emerald-200 font-medium">Kamar Kosong Siap Huni</span>
-              <div className="text-xl font-black text-white mt-1">{kosongKamar} Kamar</div>
-              <span className="text-[10px] text-emerald-300">Tersedia untuk disewakan</span>
-            </div>
-            <div className="p-2.5 bg-white/10 rounded-lg border border-emerald-600/40">
-              <span className="text-[10px] text-emerald-200 font-medium">Rombongan Terdaftar</span>
-              <div className="text-xl font-black text-gold-300 mt-1">{allGroups.length} Rombongan</div>
-              <span className="text-[10px] text-emerald-300">Haji, Umum, & Instansi</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isSuperAdmin && (
-        <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-hajj-950 p-4 rounded-xl shadow-xs border border-gold-500/40 text-white space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gold-500/30 pb-2.5">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-lg bg-gold-400/20 text-gold-400 border border-gold-400/40 flex items-center justify-center text-base">
-                <i className="fa-solid fa-user-shield"></i>
-              </div>
-              <div>
-                <div className="flex items-center space-x-2">
-                  <h3 className="font-bold text-sm text-white">Pusat Komando Pimpinan & Super Admin (Lintas Divisi)</h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-gold-400 text-slate-950">
-                    Administrator
-                  </span>
-                </div>
-                <p className="text-[11px] text-gold-200/90">
-                  Pengawasan menyeluruh lintas bagian operasional: Resepsionis, QC Standar Mutu, Teknisi Sarpras, & Koperasi.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setActiveTab('users')}
-                className="px-3 py-1.5 bg-gold-500 hover:bg-gold-400 text-slate-950 font-bold text-xs rounded-lg transition flex items-center space-x-1.5 shadow-xs"
-              >
-                <i className="fa-solid fa-users-gear text-xs"></i>
-                <span>Kelola Petugas</span>
-              </button>
-              <button
-                onClick={() => setActiveTab('auditLog')}
-                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-gold-300 border border-gold-400/30 font-bold text-xs rounded-lg transition flex items-center space-x-1.5"
-              >
-                <i className="fa-solid fa-clock-rotate-left text-xs"></i>
-                <span>Audit & Shift</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-            <div 
-              onClick={() => setActiveTab('gedung')} 
-              className="p-2.5 bg-white/5 hover:bg-white/10 rounded-lg border border-slate-700 cursor-pointer transition"
-            >
-              <span className="text-[10px] text-slate-400 font-medium">Front Desk & Hunian</span>
-              <div className="text-base font-bold text-emerald-400 mt-1">{terisiKamar} Kamar Terisi</div>
-              <span className="text-[10px] text-slate-400">{allGroups.length} Rombongan Aktif</span>
-            </div>
-            <div 
-              onClick={() => setActiveTab('qc')} 
-              className="p-2.5 bg-white/5 hover:bg-white/10 rounded-lg border border-slate-700 cursor-pointer transition"
-            >
-              <span className="text-[10px] text-slate-400 font-medium">Quality Control (QC)</span>
-              <div className="text-base font-bold text-teal-400 mt-1">{waitingQcRooms} Butuh QC</div>
-              <span className="text-[10px] text-slate-400">{readyQcRooms} Kamar Lolos Standar</span>
-            </div>
-            <div 
-              onClick={() => setActiveTab('laporanMaintenance')} 
-              className="p-2.5 bg-white/5 hover:bg-white/10 rounded-lg border border-slate-700 cursor-pointer transition"
-            >
-              <span className="text-[10px] text-slate-400 font-medium">Teknisi & Fasilitas</span>
-              <div className="text-base font-bold text-amber-400 mt-1">{urgentMaintenances.length} Tiket Urgen</div>
-              <span className="text-[10px] text-slate-400">{maintKamar} Kamar Maintenance</span>
-            </div>
-            <div 
-              onClick={() => setActiveTab('pesananSarapan')} 
-              className="p-2.5 bg-white/5 hover:bg-white/10 rounded-lg border border-slate-700 cursor-pointer transition"
-            >
-              <span className="text-[10px] text-slate-400 font-medium">Dapur & Konsumsi</span>
-              <div className="text-base font-bold text-orange-400 mt-1">{totalBreakfastPortions} Porsi Sarapan</div>
-              <span className="text-[10px] text-slate-400">{activeBreakfastList.length} Kamar Pemesan</span>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 2. EXECUTIVE METRIC CARDS (6 Metrik Utama) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {/* Okupansi Kamar */}
-        <div className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-emerald-300 transition">
+        <div 
+          onClick={() => setActiveTab('gedung')}
+          className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-emerald-400 hover:shadow-sm transition cursor-pointer group"
+          title="Klik untuk melihat denah & daftar seluruh kamar"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Okupansi Kamar</span>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider group-hover:text-emerald-700">Okupansi Kamar</span>
             <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-black text-[10px] border border-emerald-200">
               {occupancyPercent}%
             </span>
           </div>
           <div className="my-2">
-            <div className="text-2xl font-black text-slate-900">{terisiKamar}<span className="text-xs font-semibold text-slate-400">/{totalKamar}</span></div>
+            <div className="text-2xl font-black text-slate-900 group-hover:text-emerald-800">{terisiKamar}<span className="text-xs font-semibold text-slate-400">/{totalKamar}</span></div>
             <div className="w-full bg-slate-100 rounded-full h-1.5 mt-1.5 overflow-hidden">
               <div className="bg-emerald-600 h-1.5 rounded-full transition-all" style={{ width: `${occupancyPercent}%` }}></div>
             </div>
           </div>
-          <span className="text-[10px] text-slate-500 font-medium">{kosongKamar} Kamar Siap Huni</span>
+          <span className="text-[10px] text-slate-500 font-medium flex items-center justify-between">
+            <span>{kosongKamar} Kamar Siap Huni</span>
+            <i className="fa-solid fa-arrow-right text-[9px] text-slate-400 group-hover:text-emerald-600 transition"></i>
+          </span>
         </div>
 
         {/* Tamu / Jemaah Menginap */}
-        <div className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-emerald-300 transition">
+        <div 
+          onClick={() => setActiveTab('gedung')}
+          className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-emerald-400 hover:shadow-sm transition cursor-pointer group"
+          title="Klik untuk melihat daftar tamu dan jemaah yang sedang menginap"
+        >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Tamu Menginap</span>
             <i className="fa-solid fa-users text-emerald-600 text-xs"></i>
@@ -776,14 +477,24 @@ export function Dashboard() {
             <div className="text-2xl font-black text-emerald-700">{activeTransactions.length}</div>
             <p className="text-[10px] text-slate-500 mt-0.5">{jemaahCount} Jemaah Haji • {umumCount} Umum</p>
           </div>
-          <span className="text-[10px] text-emerald-700 font-semibold flex items-center space-x-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>Hunian Sedang Aktif</span>
+          <span className="text-[10px] text-emerald-700 font-semibold flex items-center justify-between">
+            <span className="flex items-center space-x-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>Hunian Sedang Aktif</span>
+            </span>
+            <i className="fa-solid fa-arrow-right text-[9px] text-slate-400 group-hover:text-emerald-600 transition"></i>
           </span>
         </div>
 
         {/* Reservasi Terjadwal */}
-        <div className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-blue-300 transition">
+        <div 
+          onClick={() => {
+            const el = document.getElementById('dashboard-calendar-section');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+          }}
+          className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-blue-400 hover:shadow-sm transition cursor-pointer group"
+          title="Klik untuk menuju ke Kalender Reservasi & Hunian"
+        >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Reservasi Terjadwal</span>
             <i className="fa-solid fa-calendar-check text-blue-600 text-xs"></i>
@@ -792,11 +503,22 @@ export function Dashboard() {
             <div className="text-2xl font-black text-blue-700">{bookedKamar}</div>
             <p className="text-[10px] text-blue-600 mt-0.5">{checkinTodayList.length} Dijadwalkan Hari Ini</p>
           </div>
-          <span className="text-[10px] text-slate-500">Booking Kamar Mendatang</span>
+          <span className="text-[10px] text-slate-500 flex items-center justify-between">
+            <span>Booking Kamar Mendatang</span>
+            <i className="fa-solid fa-calendar text-[9px] text-slate-400 group-hover:text-blue-600 transition"></i>
+          </span>
         </div>
 
         {/* Ruang Pertemuan (Aula) */}
-        <div className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-purple-300 transition">
+        <div 
+          onClick={() => {
+            setFacilityFilter('AULA');
+            const el = document.getElementById('dashboard-calendar-section');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+          }}
+          className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-purple-400 hover:shadow-sm transition cursor-pointer group"
+          title="Klik untuk filter kalender reservasi khusus Ruang Pertemuan / Aula"
+        >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider">Ruang Pertemuan</span>
             <i className="fa-solid fa-handshake text-purple-600 text-xs"></i>
@@ -805,11 +527,18 @@ export function Dashboard() {
             <div className="text-2xl font-black text-purple-700">{totalAula}</div>
             <p className="text-[10px] text-purple-600 mt-0.5">{aulaTerisi} Sesi Sewa Digunakan</p>
           </div>
-          <span className="text-[10px] text-slate-500">SG-1, SG-2 & Aula Utama</span>
+          <span className="text-[10px] text-slate-500 flex items-center justify-between">
+            <span>SG-1, SG-2 & Aula Utama</span>
+            <i className="fa-solid fa-arrow-right text-[9px] text-slate-400 group-hover:text-purple-600 transition"></i>
+          </span>
         </div>
 
         {/* Maintenance / Perbaikan */}
-        <div className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-amber-300 transition">
+        <div 
+          onClick={() => setActiveTab('laporanMaintenance')}
+          className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-amber-400 hover:shadow-sm transition cursor-pointer group"
+          title="Klik untuk melihat tiket kendala teknis & sarana prasarana"
+        >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider">Maintenance</span>
             <i className="fa-solid fa-screwdriver-wrench text-amber-600 text-xs"></i>
@@ -818,11 +547,18 @@ export function Dashboard() {
             <div className="text-2xl font-black text-amber-700">{maintKamar}</div>
             <p className="text-[10px] text-amber-600 mt-0.5">{urgentMaintenances.length} Tiket Urgen</p>
           </div>
-          <span className="text-[10px] text-slate-500">{activeMaintenances.length} Dalam Pengerjaan</span>
+          <span className="text-[10px] text-slate-500 flex items-center justify-between">
+            <span>{activeMaintenances.length} Dalam Pengerjaan</span>
+            <i className="fa-solid fa-arrow-right text-[9px] text-slate-400 group-hover:text-amber-600 transition"></i>
+          </span>
         </div>
 
         {/* Standar Mutu QC */}
-        <div className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-teal-300 transition">
+        <div 
+          onClick={() => setActiveTab('qc')}
+          className="bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between hover:border-teal-400 hover:shadow-sm transition cursor-pointer group"
+          title="Klik untuk membuka modul verifikasi Kendali Mutu (QC)"
+        >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-teal-700 uppercase tracking-wider">Standar Mutu QC</span>
             <i className="fa-solid fa-clipboard-check text-teal-600 text-xs"></i>
@@ -831,7 +567,10 @@ export function Dashboard() {
             <div className="text-2xl font-black text-teal-700">{readyQcRooms}</div>
             <p className="text-[10px] text-teal-600 mt-0.5">Kamar Lolos Standar QC</p>
           </div>
-          <span className="text-[10px] text-purple-700 font-semibold">{waitingQcRooms} Butuh Cek QC</span>
+          <span className="text-[10px] text-purple-700 font-semibold flex items-center justify-between">
+            <span>{waitingQcRooms} Butuh Cek QC</span>
+            <i className="fa-solid fa-arrow-right text-[9px] text-slate-400 group-hover:text-teal-600 transition"></i>
+          </span>
         </div>
       </div>
 
@@ -1333,7 +1072,13 @@ export function Dashboard() {
 
                     <button
                       type="button"
-                      onClick={() => openModal('modalGroupRegistration', { defaultGroupType: group.groupType })}
+                      onClick={() => openModal('modalGroupRegistration', { 
+                        defaultGroupType: group.groupType,
+                        initialGroupName: group.groupName,
+                        initialPicName: group.picName,
+                        initialPicPhone: group.picPhone,
+                        initialMembers: group.totalMembers
+                      })}
                       className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold transition cursor-pointer"
                       title="Tambah kamar untuk rombongan ini"
                     >
@@ -1348,7 +1093,7 @@ export function Dashboard() {
       </div>
 
       {/* 5. KALENDER RESERVASI & HUNIAN BULANAN */}
-      <div className="bg-white p-4 rounded-xl shadow-xs border border-slate-200 space-y-3">
+      <div id="dashboard-calendar-section" className="bg-white p-4 rounded-xl shadow-xs border border-slate-200 space-y-3 scroll-mt-6">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div>
             <h3 className="text-sm font-bold text-slate-800 flex items-center">
